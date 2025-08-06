@@ -1,11 +1,14 @@
 ### 🔹 CORE COMPONENTS
-| IAM Entity             | Description                                                                 |
-| ---------------------- | --------------------------------------------------------------------------- |
-| **Users**              | Individual accounts (human or app) with credentials                         |
-| **Groups**             | Collections of users; attach policies to groups                             |
-| **Roles**              | Temporary access via **assume role** (cross-account, services, federated)   |
-| **Policies**           | JSON documents that define permissions (who can do what on which resources) |
-| **Identity Providers** | Used for SSO (SAML 2.0, OIDC, Cognito, etc.)                                |
+| Term          | Description                                                                      |
+| ------------- | -------------------------------------------------------------------------------- |
+| **User**      | Individual identity with credentials.                                            |
+| **Group**     | Collection of users with shared permissions.                                     |
+| **Role**      | Temporary access, no credentials, assumed by users/services.                     |
+| **Policy**    | JSON doc that defines **permissions** (Allow/Deny) for **users, groups, roles**. |
+| **Principal** | The entity (user, role, app) making a request.                                   |
+
+🧠 Default is deny. You must explicitly allow actions in a policy.
+
 
 ### 🔑 IAM POLICIES
 - Identity-Based: Attach to user, group, or role.
@@ -15,7 +18,7 @@
   - Customer-Managed (custom)
 - Inline Policies: One-off, tightly coupled with a single identity.
 
-Policy Evaluation Logic (Deny > Allow):
+Policy Evaluation Logic (Explicit Deny overrides Allow):
 - Start with default deny.
 - Check for explicit deny → overrides everything.
 - Check for explicit allow.
@@ -35,12 +38,12 @@ Policy Evaluation Logic (Deny > Allow):
 | “Restrict what a user can do, even with Admin” | Permission Boundary                             |
 
 ### 🔒 IAM BEST PRACTICES (Exam-relevant)
-- Enable MFA for root and privileged users.
-- Never use the root account for daily tasks.
-- Use roles instead of users for apps or services.
-- Use least privilege principle.
-- Rotate credentials regularly.
-- Use access advisor to clean up unused permissions.
+- 🔒 MFA for all users (especially root).
+- ❌ Do not use root account for daily operations.
+- 🔑 Least Privilege – only grant needed permissions.
+- 🔄 Use IAM Roles, not access keys for apps/EC2.
+- 🛡️ Audit with IAM Access Analyzer, CloudTrail, or IAM Policy Simulator.
+
 
 ### ⏱️ TEMPORARY SECURITY CREDENTIALS (STS)
 - AWS STS (Security Token Service) issues temporary tokens.
@@ -57,12 +60,16 @@ Policy Evaluation Logic (Deny > Allow):
   - Session Token
 
 ### ✅ IAM ROLES — DEVELOPER CONTEXT
-- Used for assume role in trusted services or accounts.
-- Common use cases:
-  - Lambda assumes role to access S3
-  - EC2 assumes role to access DynamoDB 
-  - Cloud9 assumes role to deploy with CodeDeploy
-- No credentials stored. Secure and auditable.
+
+| Use Case                   | How it works                                                         |
+| -------------------------- | -------------------------------------------------------------------- |
+| **EC2 Instance Role**      | Grants permissions via instance metadata endpoint `169.254.169.254`. |
+| **Lambda Execution Role**  | Lambda assumes role to access AWS services.                          |
+| **Cross-account Access**   | Role trust policy allows other account to assume it.                 |
+| **Temporary Access**       | STS `AssumeRole` returns temporary credentials.                      |
+| **Federated Access (SSO)** | IAM role mapped to external user identity.                           |
+
+📌 No credentials stored. Secure and auditable.
 
 📌 Trust policy defines who can assume the role.
 
@@ -121,12 +128,41 @@ Add more control to permissions.
 | User can list but not write             | Likely missing `s3:PutObject` or wrong condition          |
 | Policy allows but still denied          | Look for **explicit deny** somewhere else                 |
 | Long-lived credentials in app           | Use **temporary creds (STS)** instead                     |
+| Lambda reads from DynamoDB                    | **Execution Role**                                      |
+| Cross-account access                          | **IAM Role + Trust Policy + STS AssumeRole**            |
+| CLI user can't access S3                      | Check **user's IAM policy** and **credentials profile** |
+| User gets too many permissions via AssumeRole | Use **Permissions Boundary** or **Session Policy**      |
+| Need to limit max permissions of role         | **Permissions Boundary**                                |
+| Sharing access to S3 bucket                   | **Resource-based policy**                               |
+
+🧠 Always match use case → policy type → role setup → least privilege.
 
 ### 🔎 IAM & DEVELOPER SERVICES
 - CodePipeline / CodeBuild: Use IAM Roles to define permissions. 
 - Lambda: Execution Role controls AWS resource access. 
 - Cognito: Federated identity pools issue temporary STS tokens. 
 - S3 Pre-signed URLs: Work based on IAM permissions of signing entity.
+
+### 🔐 IAM + Lambda
+| Topic                     | Notes                                                                              |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| **Execution Role**        | Required for Lambda to access other AWS services.                                  |
+| **Resource-based Policy** | Required if **other services** invoke the Lambda function (e.g., S3, EventBridge). |
+
+🧠 Execution Role = what Lambda does, Resource-based Policy = who can invoke Lambda.
+
+
+### 🧑‍💻 IAM + AWS CLI & SDK
+| Concept                   | Description                                                            |
+| ------------------------- | ---------------------------------------------------------------------- |
+| **Authentication**        | CLI/SDK needs credentials via **access key + secret** or **IAM role**. |
+| **Credentials File**      | Stored in `~/.aws/credentials`.                                        |
+| **Profiles**              | Use named profiles: `aws configure --profile dev`.                     |
+| **Temporary Credentials** | STS returns access key, secret key, and session token.                 |
+| **Avoid hardcoding**      | Always prefer IAM roles or env variables over static credentials.      |
+| **SDK Region**            | Must be specified (`AWS_REGION` or config file).                       |
+
+🧠 Exam Tip: If the scenario involves automation tools, APIs, or CLI, expect a question about IAM permissions or credentials management.
 
 ### 🔧 HANDY AWS CLI COMMANDS
 ```
@@ -135,6 +171,8 @@ aws iam list-roles
 aws sts assume-role --role-arn <ARN> --role-session-name session1
 aws iam create-policy --policy-name <name> --policy-document file://policy.json
 ```
+
+
 
 ### ✅ QUICK RECAP (FOR LAST-MINUTE REVIEW)
 | Topic              | Summary                                                |
