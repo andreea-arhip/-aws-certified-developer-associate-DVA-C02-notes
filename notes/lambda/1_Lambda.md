@@ -48,6 +48,12 @@
 
 ### 🔗 5. TRIGGERS & INTEGRATIONS
 
+| Trigger Type             | Who initiates?        | Does Lambda retry on failure?    | Notes                                                          |
+| ------------------------ | --------------------- | -------------------------------- | -------------------------------------------------------------- |
+| **Asynchronous**         | Event source pushes   | ✅ Yes (with exponential backoff) | Good for decoupled systems; failure retries are built-in.      |
+| **Synchronous**          | Caller invokes Lambda | ❌ Caller handles retry           | Example: API Gateway (waits for Lambda result).                |
+| **Event Source Mapping** | Lambda **pulls**      | ✅ Yes (automatically)            | Used for pollable sources like SQS, DynamoDB Streams, Kinesis. |
+---
 | Trigger Source               | Invocation Type  | Notes                                                            |
 | ---------------------------- | ---------------- | ---------------------------------------------------------------- |
 | **API Gateway**              | Synchronous      | Use for RESTful web services                                     |

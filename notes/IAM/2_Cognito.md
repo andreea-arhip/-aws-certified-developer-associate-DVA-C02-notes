@@ -1,11 +1,16 @@
 ### 🧩 What is Cognito?
 A user identity and authentication service to manage sign-up, sign-in, and access for web and mobile apps.
 
-### 🏗️ Two Main Components
-| Component          | Purpose                                               | Example Use                                           |
-| ------------------ | ----------------------------------------------------- | ----------------------------------------------------- |
-| **User Pools**     | **Authentication** – sign-up, sign-in, user directory | Login via username/password, MFA, social login        |
-| **Identity Pools** | **Authorization** – get **temporary AWS credentials** | Access AWS resources (e.g., S3, DynamoDB) after login |
+### 🆚 Two Main Components - Cognito User Pools & Identity Pools
+
+| Feature              | **User Pool**                                                   | **Identity Pool**                                                                                                         |
+| -------------------- |-----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| **Purpose**          | Handles **AUTHENTICATION** (login/signup, password reset, MFA). | Handles **AUTHORIZATION** to AWS resources.                                                                               |
+| **Who logs in?**     | Users of your app (email, phone, social, SAML, OIDC).           | Could be authenticated **via User Pool** OR **guest/unauthenticated** users.                                              |
+| **What you get**     | A **JWT token** (ID & Access tokens) for your app.              | **Temporary AWS credentials** (STS) to access AWS services.                                                               |
+| **When to use**      | When you need to manage users and their login flows.            | When you need those users to actually use AWS resources directly (S3, DynamoDB, etc.) without going through your backend. |
+| **AWS service role** | Not directly linked to IAM roles.                               | Maps **user groups / auth state** to **IAM roles**.                                                                       |
+
 
 ### 👥 Cognito User Pools – Deep Dive
 | Feature                 | Description                                                                   |
@@ -28,6 +33,16 @@ A user identity and authentication service to manage sign-up, sign-in, and acces
 | Federation Support         | Supports **Cognito User Pools**, **SAML**, **OIDC**, and **social identity providers**.                   |
 
 🧠 Identity Pools = get AWS access, User Pools = log in and get user tokens.
+
+### 🧩 How they work together
+- User Pool = “Who are you?” → Authentication ✅
+- Identity Pool = “What can you do in AWS?” → Authorization ✅
+- In many apps:
+  - User logs in via User Pool (gets JWT token). 
+  - Token is passed to Identity Pool. 
+  - Identity Pool exchanges it for temporary AWS creds (IAM role via STS).
+
+---
 
 ### 🔐 Cognito Federated Identity Strategy
 | Scenario                             | Service(s) Used                                    |
@@ -57,6 +72,13 @@ A user identity and authentication service to manage sign-up, sign-in, and acces
 | "IAM roles mapped per group"          | ✅ Identity Pool Role Mapping    |
 | "Anonymous guest access"              | ✅ Identity Pool Unauthenticated |
 | "Protect API Gateway with user login" | ✅ User Pool Authorizer          |
+
+### 🎯 Exam tips & scenarios
+- User Pool only → If your app only needs authentication and talks to your backend (which then uses AWS resources).
+- Identity Pool only → If you already have another auth system (Google, Facebook, SAML) and just want AWS credentials.
+- Both → If you want Cognito login and direct AWS access from the client.
+- Unauthenticated guests → Possible with Identity Pools (assign IAM role for unauthenticated).
+
 
 ### 🧪 Cognito vs IAM vs SSO – Know the Difference
 | Feature                                 | Cognito               | IAM                    | AWS SSO |

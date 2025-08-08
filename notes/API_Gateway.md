@@ -43,15 +43,25 @@ Amazon API Gateway is a fully managed service to:
 - Configurable per stage or per usage plan
 
 🔸 API Keys & Usage Plans
-- REST API only 
-- Control API access and track usage by client 
-- Pair with usage plans for throttling, quotas
+- REST API only
+- Control API access and track usage by client (API Key = acts like an identifier (not authentication!) for each client)
+- Pair with usage plans for setting:
+  - throttling (requests per second)
+  - burst limits → Short-term spike handling.
+  - quotas (requests per day / week / month)
+
+- ✅ Example Scenario (exam-style):
+  - You have a public REST API with free and paid tiers.
+    - Free tier: 1,000 requests/day, throttle at 5 req/sec.
+    - Paid tier: 10,000 requests/day, throttle at 50 req/sec.
+  - Solution: Create two usage plans, generate API keys for each tier, and link them to the corresponding plan.
 
 🔸 Caching
 - REST API only 
-- Caches GET responses at API Gateway level 
+- Caches GET responses at API Gateway level (stage level (per method & URL))
 - TTL (time-to-live) is configurable 
 - Reduces calls to backend (e.g., Lambda, DynamoDB)
+- Can be invalidated with client requests (if enabled).
 
 ### 🧱 INTEGRATION TYPES
 | Integration Type       | Description / Example                               |
