@@ -33,12 +33,10 @@ Each AWS Region has independent VPCs.
 - Main route table is the default for all subnets unless specified.
 
 ### 🔒 Security in VPC
-| Control                                               | Description                                                               |
-| ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Security Groups**                                   | **Stateful**: Allow rules only (inbound & outbound automatically tracked) |
-| **Network ACLs (NACL)**                               | **Stateless**: Must explicitly allow both directions                      |
-| **SGs** apply to EC2, Lambda (in VPC), RDS, ENI, etc. |                                                                           |
-| **NACLs** apply at subnet level (rarely used by devs) |                                                                           |
+| Control                                               | Description                                                                                                                           |
+| ----------------------------------------------------- |---------------------------------------------------------------------------------------------------------------------------------------|
+| **Security Groups**                                   | **Stateful**: Allow rules only (inbound & outbound automatically tracked) <br>  **SGs** apply to EC2, Lambda (in VPC), RDS, ENI, etc. |
+| **Network ACLs (NACL)**                               | **Stateless**: Must explicitly allow both directions <br> **NACLs** apply at subnet level (rarely used by devs)                                                                            |
 
 ✅ Use Security Groups for application-layer control.
 

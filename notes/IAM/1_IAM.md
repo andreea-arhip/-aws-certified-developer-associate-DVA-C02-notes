@@ -16,33 +16,25 @@
 - Managed Policies:
   - AWS-Managed (reusable)
   - Customer-Managed (custom)
-- Inline Policies: One-off, tightly coupled with a single identity.
+- Inline Policies: One-off, tightly coupled with a single identity (can't be reused).
 
 Policy Evaluation Logic (Explicit Deny overrides Allow):
-- Start with default deny.
-- Check for explicit deny → overrides everything.
-- Check for explicit allow.
-- Final result is allow/deny.
+- Start with **default deny** → This is AWS’s “secure by default” stance.
+- Check for **explicit deny** → **overrides everything**.
+- Check for **explicit allow** → If no explicit deny exists, and a policy allows it, then access is granted.
 
 📌 Permission boundaries, session policies, and service control policies (SCPs) can limit what a role/user can do, even if granted permissions.
 
 ### 🧠 MEMORY & SCENARIO TIPS
-| Scenario or Keyword                            | Think / Use                                     |
-| ---------------------------------------------- | ----------------------------------------------- |
-| “Temporary credentials”                        | STS + IAM Role                                  |
-| “Cross-account access”                         | IAM Role with trust policy                      |
-| “Application on EC2 accesses S3”               | EC2 Instance Profile + IAM Role                 |
-| “Service accesses another AWS service”         | IAM Role with service trust (e.g., Lambda → S3) |
-| “Human user needs AWS CLI access”              | IAM User with access keys                       |
-| “Federated access via Google or AD”            | IAM Identity Provider                           |
-| “Restrict what a user can do, even with Admin” | Permission Boundary                             |
-
-### 🔒 IAM BEST PRACTICES (Exam-relevant)
-- 🔒 MFA for all users (especially root).
-- ❌ Do not use root account for daily operations.
-- 🔑 Least Privilege – only grant needed permissions.
-- 🔄 Use IAM Roles, not access keys for apps/EC2.
-- 🛡️ Audit with IAM Access Analyzer, CloudTrail, or IAM Policy Simulator.
+| Scenario or Keyword                            | Think / Use                                                                                             |
+| ---------------------------------------------- |---------------------------------------------------------------------------------------------------------|
+| “Temporary credentials”                        | STS + IAM Role                                                                                          |
+| “Cross-account access”                         | IAM Role in target account <br> + Trust policy (who is allowed to assume the Role - trusted Principals) |
+| “Application on EC2 accesses S3”               | EC2 Instance Profile + IAM Role                                                                         |
+| “Service accesses another AWS service”         | IAM Role with service trust (e.g., Lambda → S3)                                                         |
+| “Human user needs AWS CLI access”              | IAM User with access keys                                                                               |
+| “Federated access via Google or AD”            | IAM Identity Provider                                                                                   |
+| “Restrict what a user can do, even with Admin” | Permission Boundary                                                                                     |
 
 
 ### ⏱️ TEMPORARY SECURITY CREDENTIALS (STS)
@@ -153,16 +145,30 @@ Add more control to permissions.
 
 
 ### 🧑‍💻 IAM + AWS CLI & SDK
-| Concept                   | Description                                                            |
-| ------------------------- | ---------------------------------------------------------------------- |
-| **Authentication**        | CLI/SDK needs credentials via **access key + secret** or **IAM role**. |
-| **Credentials File**      | Stored in `~/.aws/credentials`.                                        |
-| **Profiles**              | Use named profiles: `aws configure --profile dev`.                     |
-| **Temporary Credentials** | STS returns access key, secret key, and session token.                 |
-| **Avoid hardcoding**      | Always prefer IAM roles or env variables over static credentials.      |
-| **SDK Region**            | Must be specified (`AWS_REGION` or config file).                       |
+| **Concept**               | **What You Must Know**                                                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Authentication**        | AWS CLI & SDK need **credentials** — either **Access Key + Secret Key** (IAM user) or **IAM Role** (recommended for EC2, Lambda, etc.). |
+| **Credentials File**      | Stored in `~/.aws/credentials` (Linux/Mac) or `%USERPROFILE%\.aws\credentials` (Windows).                                               |
+| **Profiles**              | Use named profiles to switch between accounts: `aws configure --profile dev`.                                                           |
+| **Temporary Credentials** | **STS** (`assume-role`) returns **Access Key + Secret Key + Session Token** — expire after a short time.                                |
+| **Avoid Hardcoding**      | Best practice: **Never** store keys in code. Use IAM Roles, env vars, or AWS CLI profiles.                                              |
+| **SDK Region**            | Must specify a region (via `AWS_REGION` env var, `--region` flag, or config file). Missing region = common SDK/CLI error.               |
 
-🧠 Exam Tip: If the scenario involves automation tools, APIs, or CLI, expect a question about IAM permissions or credentials management.
+🧠 Exam Tip: In the exam, if you see a scenario where a script, automation tool, AWS CLI, or SDK is doing something (like uploading to S3, updating DynamoDB, deploying Lambda), the real question is about IAM permissions or credentials management. <br>
+🔑 The safe, exam-friendly answers usually are:
+  - IAM Roles for EC2/Lambda/ECS — never hardcode keys. 
+  - Least privilege IAM policy (only needed actions). 
+  - Temporary credentials via STS if cross-account or short-lived access. 
+  - No storing access keys in code or repos.
+
+### 🔒 IAM BEST PRACTICES (Exam-relevant)
+- 🔒 MFA for all users (especially root).
+- ❌ Do not use root account for daily operations.
+- 🔑 Least Privilege – only grant needed permissions.
+- 🔄 Use IAM Roles, not access keys for apps/EC2.
+- 🛡️ Audit with IAM Access Analyzer, CloudTrail, or IAM Policy Simulator.
+
+
 
 ### 🔧 HANDY AWS CLI COMMANDS
 ```

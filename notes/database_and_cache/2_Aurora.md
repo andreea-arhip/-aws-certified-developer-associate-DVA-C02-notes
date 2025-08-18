@@ -10,14 +10,24 @@
 
 ### 🧠 Exam Tips & Traps
 ✅ Aurora automatically spreads data across AZs
+- Storage is automatically HA and replicated across AZs.
+- You don’t set up Multi-AZ manually — Aurora does it by design.
 
 ✅ Reader endpoint = load-balanced read replicas
+- No need to manage load balancing yourself.
+- All reads go to the reader endpoint → evenly spread.
 
 ✅ Failover is automatic to a reader if writer fails
+- Aurora does automatic failover between writer & readers.
+- Much faster than RDS Multi-AZ failover.
 
-❌ No manual standby setup — cluster handles HA natively
+❌ No manual standby setup
+- Aurora = built-in HA.
+- You don’t think about “standby vs active” → Aurora cluster takes care of it.
 
 ❌ Backtrack ≠ Point-in-time recovery
+- Backtrack = a “rewind button” → jump back a few minutes/hours, without restoring a snapshot.
+- Point-in-time recovery = full restore from logs / snapshots → creates a new DB instance.
 
 ### 📌 Keywords & Scenario Mapping
 | Keyword/Scenario                    | Think of                 |

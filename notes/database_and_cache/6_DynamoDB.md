@@ -10,23 +10,27 @@ Amazon DynamoDB is a fully managed, serverless, NoSQL key-value & document datab
 | **Table**              | Collection of items (like a table in RDBMS)        |
 | **Item**               | A single record (like a row)                       |
 | **Attribute**          | A field (like a column)                            |
-| **Primary Key**        | Required; uniquely identifies each item            |
-| **Partition Key (PK)** | Determines partition where item is stored          |
-| **Sort Key (SK)**      | Optional; enables range queries within a partition |
 | **RCU / WCU**          | Read/Write Capacity Units (provisioned mode)       |
+
+| Term              | What It Means                                                                                                                                                              | Example                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Partition Key** | The attribute used to decide **which partition** an item is stored in (physical location). **Must be unique if no Sort Key**.                                              | `userId = 123`                                                                  |
+| **Sort Key**      | Optional second attribute used **to sort items within the same Partition Key**. Allows multiple items with same Partition Key.                                             | `timestamp = 2025-08-11T10:00`                                                  |
+| **Primary Key**   | The **full unique identifier** for an item. Could be: <br>• **Partition Key only** (**Simple Primary Key**) <br>• **Partition Key + Sort Key** (**Composite Primary Key**) | `userId=123` (simple) <br>`userId=123 + timestamp=2025-08-11T10:00` (composite) |
+
 
 🧠 Exam Tip: Partition key = hash key, Sort key = range key
 
 ### 🧠 MEMORY TIPS & EXAM SCENARIOS
-| If the exam says…                     | Think of…                              |
-| ------------------------------------- | -------------------------------------- |
-| “NoSQL”, “scalable”, “serverless”     | DynamoDB                               |
-| “millisecond performance”             | DynamoDB                               |
-| “millions of TPS” or “burst workload” | DynamoDB On-Demand or DAX              |
-| “mobile backend”, “IoT”, “gaming”     | DynamoDB                               |
-| “atomic counter”, “increment counter” | `UpdateItem` with `ADD` action         |
-| “real-time leaderboards”              | Use **Sort Key** + `Query` with `DESC` |
-| “event-driven” or “change capture”    | DynamoDB Streams + Lambda              |
+| If the exam says…                     | Think of…                                              |
+| ------------------------------------- |--------------------------------------------------------|
+| “NoSQL”, “scalable”, “serverless”     | DynamoDB                                               |
+| “millisecond performance”             | DynamoDB                                               |
+| “millions of TPS” or “burst workload” | DynamoDB On-Demand or DAX                              |
+| “mobile backend”, “IoT”, “gaming”     | DynamoDB                                               |
+| “atomic counter”, “increment counter” | `UpdateItem` with `ADD` action                         |
+| “real-time leaderboards”              | Use **Sort Key** + `Query` with `DESC` -> Avoid `Scan` |
+| “event-driven” or “change capture”    | DynamoDB Streams + Lambda                              |
 
 ### 🔐 SECURITY
 ✅ Integrated with IAM for fine-grained access control (via IAM policies)
@@ -46,13 +50,13 @@ Amazon DynamoDB is a fully managed, serverless, NoSQL key-value & document datab
 
 ### ✅ 1. CAPACITY UNIT DEFINITIONS
 RCU (Read Capacity Unit):
-- 1RCU = 1 strongly consistent read/sec for item up to 4 KB  --> ROUNDED_UP_SIZE / 4 * 1
-- 1RCU = 2 eventually consistent reads/sec for item up to 4 KB --> ROUNDED_UP_SIZE / 4 * 0.5
-- 2RCU = 1 transactional read --> ROUNDED_UP_SIZE / 4 * 2
+- 1RCU = 1 **strongly** consistent read/sec for item up to 4 KB  --> ROUNDED_UP_SIZE / 4 * 1
+- 1RCU = 2 **eventually** consistent (default) reads/sec for item up to 4 KB --> ROUNDED_UP_SIZE / 4 * 0.5
+- 2RCU = 1 **transactional** read --> ROUNDED_UP_SIZE / 4 * 2
 
 WCU (Write Capacity Unit):
 - 1WCU = 1 write/sec for item up to 1 KB --> ROUNDED_UP_SIZE / 1 * 1
-- 2WCU = 1 transactional write --> ROUNDED_UP_SIZE / 1 * 2
+- 2WCU = 1 **transactional** write --> ROUNDED_UP_SIZE / 1 * 2
 
 🧠 DynamoDB rounds up:
 - 6 KB read = 2 RCUs (8KB / 4KB)
@@ -175,7 +179,10 @@ WCU (Write Capacity Unit):
 
 ### 🧩 Best Practices
 - Avoid Scan in production; use Query instead. 
-- Use ProjectionExpression to reduce RCU usage. 
+  - 💡 Exam tip:
+    - If the question mentions filtering by partition key, the answer is always Query for efficiency.
+    - If you must filter on attributes without a partition key, consider GSI + Query, not Scan.
+- Use ProjectionExpression to reduce RCU usage (because it reduces the KB of data read)
 - Use BatchGetItem/BatchWriteItem for bulk ops. 
 - Implement exponential backoff on throttling errors.
 
@@ -195,6 +202,23 @@ WCU (Write Capacity Unit):
 - Use for disaster recovery, multi-region latency
 
 🧠 Think “global active-active database”
+
+### DynamoDB Features - Summary
+| Feature                           | Purpose                                                  | How                                                          | Notes / Exam Tips                                                           |
+| --------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| **Atomic Counter**                | Increment/decrement numeric attribute without read-first | `UpdateItem` + `ADD`                                         | Thread-safe; works with concurrent updates; use negative value to decrement |
+| **TTL (Time to Live)**            | Auto-delete expired items                                | Set TTL attribute with epoch timestamp                       | Deletes eventually (not instantly); good for session data, temp items       |
+| **Conditional Writes**            | Write only if condition met                              | `ConditionExpression`                                        | Prevents overwriting; used for optimistic locking                           |
+| **DynamoDB Streams**              | Track item changes                                       | Enable on table; read via Lambda/Kinesis                     | Ordered per partition key; for triggers, audit, replication                 |
+| **Query vs Scan**                 | Efficient retrieval vs full table read                   | Query uses partition key (optional sort key); Scan reads all | Query is preferred; Scan is expensive                                       |
+| **Global Secondary Index (GSI)**  | Query on non-PK attributes                               | Create separately; has own throughput                        | Eventual consistency only                                                   |
+| **Local Secondary Index (LSI)**   | Alternate sort key for same partition key                | Create at table creation                                     | Strong consistency possible                                                 |
+| **Transactions**                  | Multi-item, multi-table atomic ops                       | `TransactWriteItems`, `TransactGetItems`                     | Slower; up to 25 items                                                      |
+| **On-Demand Backup & Restore**    | Full table backup                                        | Console/API                                                  | Doesn’t impact performance                                                  |
+| **Point-in-Time Recovery (PITR)** | Restore table to any second in last 35 days              | Enable on table                                              | Great for accidental deletes                                                |
+| **DAX (DynamoDB Accelerator)**    | In-memory cache for reads                                | Cluster endpoint instead of table endpoint                   | Millisecond → microsecond latency; eventual consistency only                |
+
+
 
 ### 📌 QUICK CONFIG CHECKLIST
 ✅ Proper key design (PK and SK as needed)?

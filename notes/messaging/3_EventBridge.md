@@ -77,9 +77,9 @@ Event Source → Event Bus → Event Rule → Target
 
 ### ⚠️ Tricky Questions & Exam Tips
 | Trap / Gotcha                                        | Reminder                                                      |
-| ---------------------------------------------------- | ------------------------------------------------------------- |
+| ---------------------------------------------------- |---------------------------------------------------------------|
 | EventBridge **does not store events** by default     | Must enable archiving if you want retention                   |
-| Filtering is **pattern-based** (not message content) | JSON pattern must match structure                             |
+| Filtering is **pattern-based** (not message content) | JSON pattern must match structure (even nesting fields)       |
 | Events must be **JSON**                              | Binary payloads are not allowed                               |
 | Cross-account?                                       | Must configure **resource policy** on target event bus        |
 | Delay/Retry logic                                    | EventBridge **does not support retry config** like SQS/Lambda |

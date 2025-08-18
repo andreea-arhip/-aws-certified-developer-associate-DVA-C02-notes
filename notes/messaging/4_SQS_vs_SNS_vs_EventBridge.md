@@ -35,3 +35,20 @@
 - SNS = "Push Notifications" (fan-out to Lambda/email/SMS/SQS)
 - SQS = "Pull Queue" (durable, retries, FIFO/LIFO, dead letter queue)
 
+---
+
+### EventBridge vs SNS
+| Feature              | SNS                                          | EventBridge                                                  |
+| -------------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| **Event format**     | Any payload + optional attributes            | Structured JSON (`source`, `detail-type`, `detail`)          |
+| **Filter location**  | Message attributes only                      | Any field in event JSON                                      |
+| **Typical latency**  | < 100 ms                                     | \~500 ms – 1 sec                                             |
+| **Delivery targets** | SQS, Lambda, HTTP/S, SMS, email, mobile push | 17+ AWS targets (Lambda, Step Functions, Kinesis, SQS, etc.) |
+| **Throughput**       | Millions/sec                                 | \~400 events/sec per account per region (soft limit)         |
+| **Best for**         | High-volume, low-latency, fan-out            | Complex routing, AWS service events, multi-account event bus |
+
+### Quick Exam Memory Hook
+- If they say: “match payload fields” → EventBridge
+- If they say: “match message attributes” → SNS
+- If they say: “near-real-time millions of msgs/sec” → SNS
+- If they say: “centralized routing from many AWS services” → EventBridge

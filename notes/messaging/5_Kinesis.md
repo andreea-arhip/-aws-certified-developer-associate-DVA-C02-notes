@@ -79,9 +79,11 @@ Streaming data delivery → automatically loads into:
 | Want to compress and transform data while streaming | ✅ Yes (Lambda transform)   |
 | Need exactly-once replay and consumer coordination  | ❌ Use Kinesis Data Streams |
 
+---
 
 ### 📈 Kinesis Data Analytics
 Run SQL queries on real-time streams (Kinesis or Firehose)
+
 | Feature                    | Notes                                           |
 | -------------------------- | ----------------------------------------------- |
 | SQL-based stream analytics | Use standard SQL to process JSON-formatted data |
