@@ -90,6 +90,18 @@ SNS allows subscription filters using message attributes, so different subscribe
 | **Message Attributes**    | Key-value pairs for filtering                             |
 | **Delivery Logs**         | Use CloudWatch Logs for troubleshooting                   |
 
+### ✅ Filtering:
+- Filter policies only apply to message attributes, not body.
+- Use attributes for routing, e.g., "customerType": "premium".
+- Message body = the actual message (e.g., "Order shipped").
+```
+"Message": "Order complete",
+"MessageAttributes": {
+  "priority": { "DataType": "String", "StringValue": "high" }
+}
+```
+- Body: "Order complete" → What the message says.
+- Attributes: "priority": "high" → Only this is used for filtering.
 
 ### 🧠 Memorization Tricks
 - “Push = SNS, Pull = SQS” 

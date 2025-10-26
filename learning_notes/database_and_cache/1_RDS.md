@@ -10,6 +10,7 @@
 ### 🧠 Exam Tips & Traps
 ✅ Multi-AZ:
 - Needs to be set up manually
+- sync replication
 - Standby (safety net), for high availability
 - For automatic failover (automatic DNS change)
 - Not for scaling (writes & reads always go to the primary, standby is just waiting)

@@ -11,12 +11,17 @@
 
 
 ### 🔑 IAM POLICIES
-- Identity-Based: Attach to user, group, or role.
-- Resource-Based: Used with services like S3, Lambda, SQS, etc.
-- Managed Policies:
-  - AWS-Managed (reusable)
-  - Customer-Managed (custom)
-- Inline Policies: One-off, tightly coupled with a single identity (can't be reused).
+- **Identity-Based:** Attach to user, group, or role.
+- **Resource-Based:** Used with services like S3, Lambda, SQS, etc.
+  - ❌ Attaching resource-based policy to role? → Nope. Roles get identity policies, resources (like S3) get resource policies.
+- **Managed Policies** = reusable objects:
+  - AWS-Managed (reusable) → predefined by AWS (read-only, admin, etc).
+  - Customer-Managed (custom) → you define and can reuse across multiple principals.
+- **Inline Policies**: One-to-one, tightly coupled with a single identity (can't be reused).
+
+👉 Exam trap: If you see “reuse across accounts/roles” → managed.
+👉 If “special permissions for one role only” → inline.
+
 
 Policy Evaluation Logic (Explicit Deny overrides Allow):
 - Start with **default deny** → This is AWS’s “secure by default” stance.
@@ -178,6 +183,13 @@ aws sts assume-role --role-arn <ARN> --role-session-name session1
 aws iam create-policy --policy-name <name> --policy-document file://policy.json
 ```
 
+### IAM + Security Tools
+
+☑️ IAM Access Analyzer → detects unintended public or cross-account access
+
+☑️ IAM Policy Simulator → test policy effects
+
+☑️ AWS Organizations SCPs → set max permissions at account/OU level (can’t grant, only restrict)
 
 
 ### ✅ QUICK RECAP (FOR LAST-MINUTE REVIEW)

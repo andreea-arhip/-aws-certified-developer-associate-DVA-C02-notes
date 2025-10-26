@@ -58,13 +58,13 @@
 | ---------------------------- | ---------------- | ---------------------------------------------------------------- |
 | **API Gateway**              | Synchronous      | Use for RESTful web services                                     |
 | **Function URL**             | Synchronous      | HTTPS endpoint, simpler than API Gateway (IAM or NONE auth only) |
+| **CodePipeline, CodeCommit** | Synchronous      | CI/CD integration                                                |
 | **S3**                       | Asynchronous     | Trigger on PUT, DELETE events                                    |
 | **SNS / EventBridge**        | Asynchronous     | Push events to Lambda                                            |
+| **CloudWatch Events**        | Asynchronous     | For cron-style scheduled jobs or rule-based triggers             |
 | **SQS**                      | Event Source Map | Lambda polls; supports batching and retries                      |
 | **DynamoDB Streams**         | Event Source Map | Trigger Lambda on item-level changes                             |
 | **Kinesis**                  | Event Source Map | Similar to DynamoDB Streams, with record checkpointing           |
-| **CloudWatch Events**        | Asynchronous     | For cron-style scheduled jobs or rule-based triggers             |
-| **CodePipeline, CodeCommit** | Synchronous      | CI/CD integration                                                |
 
 <br>
 

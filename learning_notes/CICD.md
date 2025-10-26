@@ -56,11 +56,12 @@ Automates deployment to:
 
 ✅ Deployment Strategies:
 
-| Type        | Target                       | Strategies Available |
-| ----------- | ---------------------------- | -------------------- |
-| EC2/on-prem | In-place, Blue/Green         |                      |
-| Lambda      | Canary, Linear, All-at-once  |                      |
-| ECS         | Rolling update or Blue/Green |                      |
+| **Target**                         | **Deployment Strategies**                                                                                                                                           | **Exam Tips / Scenarios**                                                                                                          |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **EC2 / On-Prem (via CodeDeploy)** | - **In-Place (Rolling)**: Updates instances one by one (some downtime possible)<br>- **Blue/Green**: New environment created → traffic switched                     | - **In-place** = fewer resources, but downtime risk.<br>- **Blue/Green** = zero downtime, easy rollback, costs more.               |
+| **Lambda**                         | - **Canary**: Shift small % traffic first, then rest.<br>- **Linear**: Shift traffic in equal increments over time.<br>- **All-at-once**: 100% traffic immediately. | - **Canary** = safest for critical functions.<br>- **Linear** = steady, gradual rollout.<br>- **All-at-once** = fastest, riskiest. |
+| **ECS (Fargate or EC2)**           | - **Rolling Update**: Replace tasks gradually.<br>- **Blue/Green (via CodeDeploy or ECS service)**: New tasks in new environment, then switch traffic.              | - **Rolling** = default, no downtime if capacity allows.<br>- **Blue/Green** = zero downtime, controlled via ALB target groups.    |
+
 
 ✅ AppSpec File:
 - Defines deployment structure:

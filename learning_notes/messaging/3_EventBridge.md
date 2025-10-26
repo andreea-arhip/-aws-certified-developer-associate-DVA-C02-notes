@@ -58,6 +58,26 @@ Event Source → Event Bus → Event Rule → Target
 | **Schedule** | Cron or rate-based (every X minutes/hours)      |
 | **Target**   | One or more services triggered                  |
 
+### Filtering
+| 🔹 **Concept**                                        | 🔍 **Details**                                                                    |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Filtering happens at**                              | **Rule level** (in EventBridge, rules determine what events to match)             |
+| **Filter logic based on**                             | **Event JSON content** (not just attributes like in SNS)                          |
+| **Common fields to filter**                           | `source`, `detail-type`, `detail`, `account`, `region`                            |
+| **Filtering uses**                                    | **Exact match**, **prefix**, **anything-but**, **numeric comparison**, **exists** |
+| **Events must match all** filter conditions in a rule | ✅ (AND logic)                                                                     |
+
+#### Example of filtering rule:
+```
+{
+  "source": ["my.app"],
+  "detail": {
+    "price": [{ "numeric": [">", 100] }]
+  }
+}
+```
+➡ Matches events from my.app where price > 100.
+
 ### 🔒 Security
 | Mechanism             | Purpose                                     |
 | --------------------- | ------------------------------------------- |
@@ -100,7 +120,7 @@ Event Source → Event Bus → Event Rule → Target
 ### 📌 Memory Tricks
 - “Bridge connects everything.” 
 - “Pattern-based filtering” = EventBridge, not SQS. 
-- “Event replay?” → Only EventBridge!
+- “Event replay?” → Only EventBridge, using archive!
 - “Scheduled Lambda?” → Use EventBridge rule (rate/cron). 
 - “From app to Lambda via event” → EventBridge (custom bus)
 - “SaaS trigger?” → EventBridge Partner Event Bus

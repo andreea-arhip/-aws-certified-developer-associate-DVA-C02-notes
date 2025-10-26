@@ -79,12 +79,16 @@ A user identity and authentication service to manage sign-up, sign-in, and acces
 - Both → If you want Cognito login and direct AWS access from the client.
 - Unauthenticated guests → Possible with Identity Pools (assign IAM role for unauthenticated).
 
+### Identity Federation:
+| Feature                       | Key Points                                                                                                                             | Exam Keyword → Answer                               |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **SAML 2.0 Federation**       | Exchange workplace (corporate AD/SSO) credentials for **temporary AWS credentials** via STS. Works with **AWS Identity Center (SSO)**. | “Corporate login → AWS access” → **SAML + AWS SSO** |
+| **AWS Identity Center (SSO)** | AWS’s main service for **workplace SAML federation**. Only supports **SAML 2.0**.                                                      | “Workplace + SAML 2.0” → **SSO**                    |
+| **Amazon Cognito**            | For **non-workplace identities** (Google, Facebook, OAuth, social logins). Can also do **SAML 2.0** if AWS SSO isn’t in the answers.   | “Google login / OAuth” → **Cognito**                |
+| **Exam Trick**                | If question mentions **SAML 2.0** but doesn’t list AWS SSO, the correct choice is **Cognito**. If **non-SAML** system → can’t use SSO. | Watch wording carefully!                            |
 
-### 🧪 Cognito vs IAM vs SSO – Know the Difference
-| Feature                                 | Cognito               | IAM                    | AWS SSO |
-| --------------------------------------- | --------------------- | ---------------------- | ------- |
-| Users for your app                      | ✅                     | ❌                      | ❌       |
-| Fine-grained access to AWS              | ✅ (via Identity Pool) | ✅                      | ✅       |
-| Temporary AWS credentials               | ✅                     | ✅ (with STS)           | ✅       |
-| Federation (Google, SAML, etc.)         | ✅                     | ✅ (complex setup)      | ✅       |
-| MFA, password reset, email verification | ✅                     | ✅ (for console access) | ✅       |
+🎯 Memory Hooks
+- Workplace login (AD, corporate SSO) → SAML → AWS SSO
+- Google / OAuth / non-SAML → Cognito
+- If SSO missing in answers but SAML is mentioned → Cognito
+
