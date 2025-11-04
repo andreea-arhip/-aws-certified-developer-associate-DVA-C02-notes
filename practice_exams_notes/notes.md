@@ -9,6 +9,9 @@
     - 4. Synthesize one or more stacks in the app  -> The synthesis step catches logical errors in defining your AWS resources
     - 5. Deploy stack(s) to your AWS account -> run cdk deploy
   - cdk diff: used to generate a difference report between the deployed and local stacks
+  - NoSuchBucket error --> CDK is trying to access an S3 bucket that doesn't exist in the new AWS account.
+    - run cdk bootstrap -> sets up the environment for CDK (provisions IAM roles and the S3 bucket that CDK uses for deployment)
+  - AWS CDK has first-class support for TypeScript, JavaScript, Python, Java, and C#
 
 - SAR (AWS Serverless Application Repository):
   - managed repository for serverless applications.
@@ -41,6 +44,16 @@
     - Root cause - AM CLI runs your Lambda locally, but still uses AWS credentials for SDK calls → wrong or missing credentials = AccessDenied. Solution:
       - Use aws configure --profile to add credentials for the sandbox account
       - Run the function using sam local invoke with the --profile parameter
+    - NOTE: 
+      - Default profile is used if no --profile is specified. 
+      - Using CLI profiles is the recommended way to handle multiple accounts or IAM roles in CLI automation. 
+      - You may be asked about switching roles or credentials for dev/prod environments—the correct answer usually involves creating a new profile or using --profile.
+  - Commands:
+    - sam build -> to resolve dependencies and construct deployment artifacts for all functions and layers in the SAM template (especially important when the SAM template references local file paths, such as CodeUri pointing to local Lambda function codes)
+    - sam package -> uploads artifacts to S3 (optional, since sam deploy can do it implicitly)
+    - sam deploy -> allows the application to be deployed using AWS CloudFormation, ensuring that all resources defined in the SAM template are provisioned and configured correctly
+      - Creates/updates resources using the packaged template from S3.
+    - sam sync -> used for quick syncing of local changes to AWS and is more suitable for rapid development testing (in prod, sam deploy is better)
 
 - CloudFormation:
   - Scenario: application will be deployed across multiple regions, you need to create a map of all the possible values for the base AMI:
@@ -48,10 +61,18 @@
   - Exported Output Values in CloudFormation must have unique names within a single Region
   - CFN template = JSON- or YAML-formatted text file that describes your AWS infrastructure. 
     - The "Resources" section is the only required section
+  - Helper scripts:
+    - cfn-init: Use to retrieve and interpret resource metadata, install packages, create files, and start services. 
+    - cfn-signal: Use to signal with a CreationPolicy or WaitCondition, so you can synchronize other resources in the stack when the prerequisite resource or application is ready. 
+    - cfn-get-metadata: Use to retrieve metadata for a resource or path to a specific key. 
+    - cfn-hup: Use to check for updates to metadata and execute custom hooks when changes are detected.
   - Scenario: you must deploy resources to multiple AWS Regions to support the load testing of an API, without additional code:
     - Correct: Leverage the AWS CLI create-stack-set command:
       - Using an administrator account, you define and manage an AWS CloudFormation template
       - and then use the template as the basis for provisioning stacks into selected target accounts across specified AWS Regions.
+  - StackSets:
+    - enable you to create, update, or delete stacks across multiple accounts and regions with a single operation.
+    - Using an administrator account, you define and manage an AWS CloudFormation template, and use the template as the basis for provisioning stacks into selected target accounts across specified regions.
   - Pseudo parameters = parameters that are predefined by AWS CloudFormation (Ex: AWS::AccountId, AWS::Region, AWS::StackName)
   - Template sections:
     - AwsTemplateFormatVersion, Description, Metadata, Parameters, Mappings, Conditions, Transform, Resources, Outputs
@@ -75,7 +96,7 @@
     - refers to an array containing the list of values allowed for the parameter.
     - When applied to a parameter of type String, the parameter value must be one of the allowed values
     - When applied to a parameter of type CommaDelimitedList, each value in the list must be one of the specified allowed values.
-  - To declare Lambda in CloudFormation:
+  - To declare Lambda in CloudFormation (in the Code section):
     - INLINE: “Simple inline code” or “Hello World function” → Use ZipFile
     - MANUAL S3 UPLOAD: “Function uses third-party libraries” → Use S3 zip package 
     - S3 UPLOAD: “How to deploy updated Lambda code via CloudFormation?” → Use aws cloudformation package or sam package to upload to S3 automatically
@@ -92,6 +113,29 @@
   - To create a cross-stack reference:
     - use the Export Output field to flag the value of a resource output for export. 
     - then, use the Fn::ImportValue intrinsic function to import the value.
+  - Drift detection:
+    - Compares a stack’s current state of resources with their expected state as defined in the CloudFormation template.
+    - helpts with detecting unintended or unauthorized changes outside of CloudFormation.
+  - Scenario: automating AMI ID updates in AWS CloudFormation templates to always use the latest
+    - Solution: Use AWS Systems Manager Parameter Store with public parameters for AMIs.
+    - Notes: 
+      - By default, CloudFormation templates use static AMI IDs, which must be manually updated whenever new versions are released — not scalable for frequent deployments.
+      - ```  
+        Parameters:
+          LatestAmiId:
+          Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+          Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64'
+        Resources:
+          MyInstance:
+            Type: AWS::EC2::Instance
+            Properties:
+            ImageId: !Ref LatestAmiId
+            InstanceType: t3.micro
+        ```
+      - The Parameters section in the output for Describe API will show an additional ‘ResolvedValue’ field that contains the resolved value of the Systems Manager parameter that was used for the last stack operation.
+  - Dynamic references:
+    - reference external values that are stored and managed in other services, such as the AWS Systems Manager Parameter Store or AWS Secrets Manager
+    - ex: Password: '{{resolve:ssm-secure:IAMUserPassword:10}}' - version 10
 
 - Security tools:
   - IAM Access Analyzer:
@@ -123,6 +167,15 @@
       - Prod/dbServer/MySQL/db-string
     - Secrets can be stored as SecureString in SSM Parameter store:
       - Parameter Store uses AWS KMS to encrypt and decrypt the parameter values of Secure String parameters.
+    - Notes:
+      - Standard tier – ✅ Free, basic parameters (no policies). ❌ No expiration or rotation policies. 
+      - Advanced tier – 💰 Paid, supports parameter policies for automation and compliance:
+        - Expiration → ExpirationDate: deletes or makes a parameter unusable after a specific date. 
+        - ExpirationNotification → notifies before parameter expires. 
+        - NoChangeNotification → notifies if parameter hasn’t changed for X days (used for rotation checks). 
+      - Notifications → via EventBridge → SNS/email/Lambda. 
+      - Rotation – Usually done manually or automated via Lambda or Secrets Manager. 
+      - KMS encryption → Use for sensitive data.
 
 - Security:
   - Scenario: Reuse SSH keys in your AWS Regions:
@@ -135,6 +188,34 @@
   - Scenario: You are not authorized to perform this operation. Encoded authorization failure message: 6h34GtpmGjJJUm946eDVBfzWQJk6z5....
     - Correct: Use AWS STS decode-authorization-message
       - To decode an authorization status message, a user must be granted permissions via an IAM policy to request the DecodeAuthorizationMessage (sts:DecodeAuthorizationMessage) action.
+  - To enable HTTPS connections to your website or application in AWS, you need an SSL/TLS server certificate
+    - ACM (AWS Certificate Manager) -> preferred tool to provision, manage, and deploy your server certificates + automatically renew them
+    - IAM -> only when you must support HTTPS connections in a Region that is not supported by ACM, but you cannot upload an ACM certificate to IAM
+
+- AWS CloudHSM:
+  -  provides hardware security modules (HSM) in AWS Cloud.
+  - HSM is a computing device that processes cryptographic operations and provides secure storage for cryptographic keys.
+  - You should consider using AWS CloudHSM instead of AWS KMS if you require:
+    - Keys stored in dedicated, third-party validated hardware security modules under your exclusive control. 
+    - FIPS 140-2 compliance. 
+    - Integration with applications using PKCS#11, Java JCE, or Microsoft CNG interfaces. 
+    - High-performance in-VPC cryptographic acceleration (bulk crypto).
+
+- AWS WAF:
+  - s a web application firewall that lets you monitor the HTTP and HTTPS requests that are forwarded to an Amazon API Gateway API, Amazon CloudFront or an Application Load Balancer
+  - Basic Behaviors 
+    - Allow all except blocked 
+      - Default: allow. 
+      - Block requests matching rules (e.g., bad IPs, SQL injection attempts). 
+      - Use case: public websites where you want to block attackers but allow normal traffic. 
+    - Block all except allowed 
+      - Default: block. 
+      - allow requests matching rules (e.g., known IPs, authenticated users). 
+      - Use case: private/restricted websites where only known users can access content. 
+    - Count requests 
+      - Evaluate rules without enforcing allow/block. 
+      - Lets you test rules safely before applying. 
+      - Use case: validate new rules and ensure you don’t block legitimate traffic.
 
 - KMS:
   - Simple encryption flow:
@@ -143,7 +224,7 @@
   - Envelope encryption flow:
     - KMS creates a Data Key (a temporary key) - use **GenerateDataKey** to get the data key. 
     - Your app uses the plaintext Data Key to encrypt large data (e.g., a file). 
-    - KMS only encrypts the Data Key with the CMK. 
+    - KMS only encrypts the Data Key with the CMK (top level key, the CMK is not encrypted). 
     - You store:
       - Encrypted file (encrypted with Data Key). 
       - Encrypted Data Key (encrypted with CMK).
@@ -158,6 +239,18 @@
   - Data key caching:
     - When you encrypt or decrypt data, the AWS Encryption SDK looks for a matching data key in the cache
     - Data key caching is an optional feature of the AWS Encryption SDK that you should use cautiously
+  - You can perform the following key management functions in AWS KMS:
+    - Create symmetric and asymmetric keys where the key material is only ever used within the service
+    - Create symmetric keys where the key material is generated and used within a custom key store under your control.
+    - Import your own symmetric key for use within the service.
+    - Create both symmetric and asymmetric data key pairs for local use within your applications.
+    - Define which IAM users and roles can manage keys.
+    - Define which IAM users and roles can use keys to encrypt and decrypt data.
+    - Choose to have keys that were generated by the service to be automatically rotated on an annual basis.
+    - Temporarily disable keys so they cannot be used by anyone.
+    - Re-enable disabled keys.
+    - Schedule the deletion of keys that you no longer use.
+    - Audit the use of keys by inspecting logs in AWS CloudTrail.
 
 - CLI: Your default region is us-east-1. You want to execute a command to stop an EC2 instance in the us-east-2 region. You have permissions already:
   - Correct: Use the --region parameter -> otherwise the default region is used
@@ -191,6 +284,7 @@
     - MessageDeduplicationId - If a message with a particular message deduplication ID is sent successfully, any messages sent with the same message deduplication ID are accepted successfully but aren't delivered during the 5-minute deduplication interval.
     - ReceiveRequestAttemptId - The token is used for deduplication of ReceiveMessage calls
   - You can specify max number of messages to retrieve = 10
+  - NOT designed for real-time apps
 
 - Kinesis DataStream:
   - Scenario: ProvisionedThroughputExceededException on a PutRecords API call to write multiple data records into a Kinesis data stream in a single call:
@@ -217,6 +311,12 @@
   - A Kinesis data stream is a set of shards:
     - A shard is a uniquely identified sequence of data records in a stream. A stream is composed of one or more shards, each of which provides a fixed unit of capacity.
     - The partition key is used by Kinesis Data Streams to distribute data across shards
+  - API:
+    - PutRecord -> one record, if you want ordering then use SequenceNumberForOrdering
+    - PutRecords -> batch, does not guarantee order of records
+  - Worker - shards ratio:
+    - Fewer workers than shards → cost-efficient + high availability via KCL failover. 
+    - More workers than shards → idle workers, no real gain in HA or throughput
 
 - Amazon Kinesis Data Firehose:
   - is a fully managed service for delivering real-time streaming data to destinations such as:
@@ -233,6 +333,12 @@
     - write your SQL queries or sophisticated streaming applications
     - and set up your destination for processed data
 
+- Kinesis Adapter:
+  - A library provided by AWS that allows DynamoDB Streams to be consumed using the Kinesis Client Library (KCL). 
+  - Makes DynamoDB Streams behave like Kinesis Streams from an application’s perspective.
+  - KCL + Kinesis Adapter abstracts shard iteration, checkpointing, and parallel processing.
+  - Ideal for high-throughput, near real-time analytics.
+
 - Elastic Beanstalk:
   - Scenario: After a test deployment in ElasticBeanstalk environment, a developer noticed that all accumulated Amazon EC2 burst balances were lost.
     - Burst balance is tied to the life of an individual EC2 instance. Any strategy that replaces the instance resets the balance, while updates that keep the same instance alive retain it.
@@ -242,6 +348,15 @@
   - Configuration files:
     - .ebextensions/<mysettings>.config
     - YAML or JSON formatted documents with a .config file extension that you place in a folder named .ebextensions and deploy in your application source bundle.
+  - Environment manifest:
+    - env.yaml
+    - Placed at the root of the application source bundle, defines:
+      - Environment name 
+      - Solution stack 
+      - Environment links (dependencies between environments)
+    - Commands:
+      - eb deploy = the standard command for uploading new versions and triggering a deployment. 
+      - aws elasticbeanstalk CLI commands  = are mostly for environment/config management, not direct deployments.
   - Scenario: You need to deploy a new version using Beanstalk while making sure that performance and availability are not affected (plus cost-effective).
     - Correct: Deploy using 'Rolling with additional batch' deployment policy
   - Environment categories:
@@ -262,6 +377,7 @@
   - Lifecycle policy:
     - Each time you upload a new version of your application, Elastic Beanstalk creates an application version.
     - A lifecycle policy tells Elastic Beanstalk to delete old application versions or to delete application versions when the total number of versions for an application exceeds a specified number
+    - In the Retention section of the application version lifecycle settings, you can either choose to delete the source bundle in S3 or retain it
   - Scenario: EC2 instances are added into an ASG, each EC2 instance should be running 3 different Docker Containers simultaneously.
     - Correct: Docker multi-container platform
       - The multi-container Docker platform uses Amazon ECS (Elastic Container Service) under thex hood.
@@ -285,6 +401,23 @@
     - Enable Active Tracing in EB console. 
     - Install X-Ray daemon via .ebextensions/xray-daemon.config 
     - Always remember: Application → sends trace → X-Ray daemon → AWS X-Ray console
+  - Best practices:
+    - Use external RDS for production → decouples DB lifecycle from EB. 
+    - Always cleanup SG dependencies to avoid deletion issues. 
+    - Security group configuration = critical step in blue/green deployments with external databases.
+  - Deployment options: 
+    - All at once, rolling, rolling with additional batch
+    - Immutable
+    - blue-green
+  - Elastic Beanstalk provides a fully managed platform for deploying and running applications, including multicontainer Docker applications. 
+    - It automatically handles:
+      - Provisioning of EC2 instances 
+      - Load balancing 
+      - Auto-scaling 
+      - Monitoring via CloudWatch 
+      - Placement of containers across instances
+    - Requires a config file named Dockerrun.aws.json placed on the same level as your app-> specific to Elastic beanstalk
+    - NOTE: ECS and EKS give you more control over container orchestration, but you have to configure scaling, load balancing, and placement policies yourself.
 
 - EC2:
   - T3, T3a, and T2 instances = Burstable performance instances -> t2.micro can be used for free in first 12 months
@@ -307,6 +440,20 @@
       - NetworkIn, NetworkOut 
       - StatusCheckFailed
       - But memory (RAM) usage is NOT included in the standard EC2 metrics.
+  - You cannot attach an IAM role directly to an EC2 instance — you must attach an Instance Profile, which contains the role. 
+    - The Instance Profile delivers temporary, automatically rotated credentials to your EC2 instance via the Instance Metadata Service (IMDS).
+  - CloudWatchAgentServerPolicy:
+    - AWS-managed policy that grants the Amazon CloudWatch agent the necessary permission to collect and publish metrics from EC2 instances to CloudWatch
+    - Attaching this policy to an IAM role associated with your EC2 instances ensures that the CloudWatch agent has the required effective permissions.
+  - Static credentials always take precedence over instance profile roles. 
+    - If an EC2 instance has access/secret keys, removing the old role is not enough — you must also remove or rotate the keys.
+  - Instance metadata:
+    - provides information about the running EC2 instance, including:
+      - Public IP address 
+      - Private IP address 
+      - Instance ID, AMI ID, security groups, etc. 
+    - The endpoint is always accessible from within the instance at http://169.254.169.254/latest/meta-data/.
+    - User data endpoint (/latest/user-data/): Only contains user-specified startup scripts, not IP info.
 
 - ASG (Auto scaling groups):
   - An Auto Scaling group can contain EC2 instances in one or more Availability Zones within the same Region
@@ -326,6 +473,8 @@
     - It replaces instances that fail EC2 system or instance status checks.
   - When creating an ASG from an existing instance, you can choose to launch from the instance’s configuration (launch template or configuration), but AWS does not automatically create a new AMI
     - If the question mentions custom configuration that must persist → create a custom AMI first.
+  - !!! you can only specify one launch template for an Auto Scaling group at a time, and you can’t modify a launch template after you’ve created it. 
+    - To change the launch template for an Auto Scaling group, you must create a launch template and then update your Auto Scaling group with it.
 
 - ELB:
   - Cross zone load balancing:
@@ -385,7 +534,10 @@
     - HTTP 503 indicates 'Service unavailable' error. This error in ALB is an indicator of the target groups for the load balancer having no registered targets.
     - HTTP 500 - HTTP 500 indicates 'Internal server' error. There are several reasons for their error: A client submitted a request without an HTTP protocol, and the load balancer was unable to generate a redirect URL, there was an error executing the web ACL rules.
     - HTTP 504 - HTTP 504 is 'Gateway timeout' error. Several reasons for this error, to quote a few: The load balancer failed to establish a connection to the target before the connection timeout expired, The load balancer established a connection to the target but the target did not respond before the idle timeout period elapsed.
-    - HTTP 403 - HTTP 403 is 'Forbidden' error. You configured an AWS WAF web access control list (web ACL) to monitor requests to your Application Load Balancer and it blocked a request.
+    - HTTP 403 - HTTP 403 is 'Forbidden' error. You configured an AWS  web access control list (web ACL) to monitor requests to your Application Load Balancer and it blocked a request.
+  - Multi-value headers for Lambda:
+    - applies for headers and query params
+    - ?name=foo&name=bar ->> ‘name’: [‘foo’, ‘bar’]
 
 NLB:
   - functions at the 4th layer (Transport) of the Open Systems Interconnection (OSI) model
@@ -425,7 +577,10 @@ NLB:
   - DeleteOnTermination - determines whether to preserve or delete the EBS volume when EC2 instance terminates
     - Default: TRUE for root volume, FALSE for all other volume types
     - If the instance is already running, you can set DeleteOnTermination to False using the command line.
- 
+  - Detach volumes:
+    - Root volume → Stop instance first, then detach. (AWS automatically handles unmounting for the root device when the instance stops.)
+    - Non-root volume → Unmount first, then detach (no need to stop the instance).
+
 - RDS:
   - Scenario: application has RDS for PostgreSQL with read-heavy workloads. how to refactor the code to achieve optimum read performance for SQL queries?
     - Correct: Set up Amazon RDS with one or more read replicas. Refactor the application code so that the queries use the endpoint for the read replicas
@@ -448,6 +603,9 @@ NLB:
       - The automated backup feature of Amazon RDS enables point-in-time recovery for your database instance
       - Automated backups are limited to a single AWS Region
       - manual snapshots and Read Replicas are supported across multiple Regions.
+  - Scenario: you want to reshard your RDS database
+    - add a read replica and promote it to master status
+    - then, from each of the resulting DB Instances, delete the data that belongs to the other shard
   -  Enable storage auto-scaling for RDS MySQL:
     - Amazon RDS detects that you are running out of free database space it automatically scales up your storage
   - RDS Multi-AZ:
@@ -458,6 +616,31 @@ NLB:
   - RDS Proxy:
     - helps you manage a large number of connections from Lambda to an RDS database by establishing a warm connection pool
     - This allows your Lambda applications to reuse existing connections, rather than creating new connections for every function invocation.
+  - Amazon RDS Enhanced Monitoring:
+    - This goes beyond standard CloudWatch metrics, which are aggregated at the instance level.
+    - Monitors per-process metrics, such as:
+      - %CPU used by each process 
+      - Memory consumption per process 
+      - File system and disk I/O stats 
+    - Provides granularity down to 1-second intervals. 
+    - Metrics are available in the RDS console and can also be pushed to CloudWatch Logs.
+  - Security:
+    - RDS Storage-Level Encryption (KMS)
+      - Encrypts EBS volumes, snapshots, backups, and read replicas. 
+      - Uses AWS KMS keys (managed or customer-managed). 
+      - Transparent to the database engine; no changes needed in the database itself. 
+      - Cannot be disabled after creating an encrypted DB (must create a new encrypted DB to change). 
+    - Transparent Data Encryption (TDE) – Database-Level 
+      - SQL Server & Oracle only (RDS managed). 
+      - Encrypts actual database data (data files, log files) before writing to storage. 
+      - Automatically decrypts data when read. 
+      - Works in conjunction with RDS storage encryption for added security. 
+      - Requires enabling at the database engine level, not automatically done.
+    - Key Exam Notes 
+      - “Encrypt database automatically at rest” → TDE 
+      - “Encrypt storage, backups, snapshots” → RDS KMS encryption 
+      - Can use both for maximum security. 
+      - TDE is engine feature; RDS encryption is AWS feature.
 
 
 - Elasticache:
@@ -502,6 +685,11 @@ NLB:
     - Correct: Use AWS Glue to copy your table to Amazon S3 and download locally -> best practice to use if you want automated, continuous backups that you can also use in another service, such as Amazon Athena.
     - Incorrect: Use the DynamoDB on-demand backup capability to write to Amazon S3 and download locally --> DynamoDB has two built-in backup methods (On-demand, Point-in-time recovery) that write to Amazon S3, but you will not have access to the S3 buckets that are used for these backups.
   - UpdateItem -> edits an existing item's attributes or adds a new item to the table if it does not already exist
+  - To return number of WCU consumed by PutItem, UpdateItem, DeleteItem:
+    - set the ReturnConsumedCapacity parameter to one of the following:
+      - TOTAL — returns the total number of write capacity units consumed. 
+      - INDEXES — returns the total number of write capacity units consumed ++++ subtotals for the table and any secondary indexes that were affected by the operation. 
+      - NONE — no write capacity details are returned. (This is the default.)
   - Time To Live (TTL) for DynamoDB:
     - allows you to define when items in a table expire so that they can be automatically deleted from the database
     - no extra cost
@@ -514,7 +702,9 @@ NLB:
   - Scan operations:
     - By default, the Scan operation processes data sequentially
     - DynamoDB returns data to the application in 1 MB increments
-    - Parallel scan -> multiple worker threads that scan different partitions of a table
+    - Parallel scan -> multiple worker threads that scan different partitions of a table:
+      - NOTE: be careful that your scan doesn’t consume your table’s provisioned throughput and cause the critical parts of your application to be throttled. 
+        - ====> To avoid throttling, you need to rate-limit your client application.
     - How to minimize impact of scan operations on throughput:
       - Reduce page size (using LIMIT) -> Each Query or Scan request that has a smaller page size uses fewer read operations and creates a “pause” between each request
       - Isolate scan operations -> you want to perform scans on a table that is not taking “mission-critical” traffic (ex: performing every write on two tables: a “mission-critical” table, and a “shadow” table.)
@@ -539,10 +729,38 @@ NLB:
     - Consider using Global tables if your application is accessed by globally distributed users
     - Use eventually consistent reads in place of strongly consistent reads whenever possible
     - When you're not making requests, consider having the client send dummy traffic to a DynamoDB table. Alternatively, you can reuse client connections or use connection pooling. All of these techniques keep internal caches warm, which helps keep latency low
+  - You can use the UpdateItem operation to implement an atomic counter => incremented, unconditionally, without interfering with other write requests
+    - For example, you might use an atomic counter to keep track of the number of visitors to a website
+  - To avoid potential throttling, the provisioned WCU for a global secondary index should be equal or greater than the WCU of the base table since new updates will write to both the base table and global secondary index.
+  - Optimistic Locking in DynamoDB 
+    - Add @DynamoDBVersionAttribute to a field in your model class. 
+    - DynamoDBMapper automatically:
+      - Creates a version attribute in the table. 
+      - Increments version on each update. 
+      - Rejects updates if the version on the server ≠ version on client.
+  - Best practice: DynamoDB Stream → Kinesis Adapter → Kinesis Client Library → Process data like Kinesis
+  - Batch operations -> are essentially wrappers around multiple read or write requests
+    - if a BatchGetItem request contains five items, DynamoDB performs five GetItem operations on your behalf. 
+    - Similarly, if a BatchWriteItem request contains two put requests and four delete requests, DynamoDB performs two PutItem and four DeleteItem requests.
+    - NOTE: fewer network calls + DynamoDB executes requests in parallel → faster than sequential individual calls.
+    - NOTE: How to handle UnprocessedKeys in case of errors:
+      - Implement an exponential backoff algorithm with a randomized delay between retries of the batch request.
+      - AWS SDKs (Boto3, etc.) to batch requests - already handle retries, pagination, exponential backoff, and automatic re-submission of UnprocessedKeys — more reliable than manual low-level API calls.
+  - Transactional operations:
+    - TransactGetItems
+    - TransactWriteItems - max 25 write actions (put, update, delete, conditioncheck)
+  - Consistency reads:
+    - LSI - both eventual and strong consistency
+    - GSI - only eventual consistency (Because the GSI is asynchronously updated, so it might not reflect the latest changes immediately)
+  - Scenario: restrict access to specific items in the table based on User Id which is the partition key
+    - Correct: dynamodb:LeadingKeys condition key to the IAM policy associated with the Identity provider’s role.
 
 - S3: 
   - Scenario: PutObject API must encrypt objects at rest by using server-side encryption with Amazon S3-managed keys (SSE-S3)
     - Correct:  set the x-amz-server-side-encryption header as AES256. Use an S3 bucket policy to deny permission to upload an object unless the request has this header
+  - S3 bucket uses server-side encryption with AWS KMS managed keys (SSE-KMS) -> Error access denied on PutObject API (although having IAM permission):
+    - Correct: Correct the policy of the IAM user to allow the kms:GenerateDataKey action:
+      - This permission is required for buckets that use default encryption with a custom AWS KMS key.
   - Scenario: make publicly accessible S3 buckets private, and enable access to objects with a time-bound constraint
     - Correct: Share pre-signed URLs with resources that need access
       - When you create a pre-signed URL for your object, you must provide your security credentials, specify a bucket name, an object key, specify the HTTP method (GET to download the object), and expiration date and time
@@ -552,9 +770,16 @@ NLB:
     - To configure your bucket to allow cross-origin requests, you create a CORS configuration, which is an XML document with:
       - rules that identify the origins that you will allow to access your bucket 
       - and the operations (HTTP methods) that will support for each origin
-  - S3 bucket uses server-side encryption with AWS KMS managed keys (SSE-KMS) -> Error access denied on PutObject API (although having IAM permission):
-    - Correct: Correct the policy of the IAM user to allow the kms:GenerateDataKey action:
-      - This permission is required for buckets that use default encryption with a custom AWS KMS key.
+    - A CORS config can have max 100 rules. A rule has the following tags:
+      - AllowedOrigin – domain origins that you allow to make cross-domain requests. 
+      - AllowedMethod –  (GET, PUT, POST, DELETE, HEAD)
+      - AllowedHeader – Specifies the headers allowed in a preflight request. 
+      - Below are some of the CORSRule elements:
+        - MaxAgeSeconds  – Specifies the amount of time in seconds (in this example, 3000) that the browser caches an Amazon S3 response to a preflight OPTIONS request for the specified resource. 
+          - By caching the response, the browser does not have to send preflight requests to Amazon S3 if the original request will be repeated. 
+        - ExposeHeader  – Identifies the response headers (in this example, x-amz-server-side-encryption, x-amz-request-id, and x-amz-id-2) that customers are able to access from their applications (for example, from a JavaScript XMLHttpRequest object).
+    - NOTE: CORS can also be configured on API Gateway if the requests are going TO the API Gateway
+      - EX: A developer is hosting a static website from an S3 bucket. The website makes requests to an API Gateway endpoint
   - S3 Object Ownership:
     -  S3 bucket setting that you can use to control ownership of new objects that are uploaded to your buckets
     - By default, when other AWS accounts upload objects to your bucket, the objects remain owned by the uploading account
@@ -573,7 +798,11 @@ NLB:
       - S3 lifecycle actions are not replicated with S3 replication
       - Replication only replicates the objects added to the bucket after replication is enabled on the bucket
       - You can use replication to make copies of your objects that retain all metadata, such as the original object creation time and version IDs
-  - Ways to share S3 buckets accross accounts:
+    - Cross region replication rules:
+      - The source and destination buckets must have versioning enabled. 
+      - The source and destination buckets must be in different AWS Regions. 
+      - Amazon S3 must have permissions to replicate objects from that source bucket to the destination bucket on your behalf.
+  - Ways to share S3 buckets across accounts:
     - Same Partition (ex: both in aws standard commercial:
       - Use IAM roles (best for console + programmatic):
         - Finance creates role with S3 permission + trusts HR account to assume it
@@ -590,6 +819,15 @@ NLB:
     - SSE-KMS: not mandatory to use HTTPS
     - SSE-S3: not mandatory to use HTTPS
     - Client side encryption: not mandatory to use HTTPS
+  - | SSE Type                           | Purpose                                                      | Required Headers                                                                                                                                                                                | Notes                                                       |
+    | ---------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+    | **SSE-S3 (AWS-managed keys)**      | S3 manages encryption/decryption                             | `x-amz-server-side-encryption: AES256`                                                                                                                                                          | No key management required.                                 |
+    | **SSE-KMS (AWS KMS-managed keys)** | S3 encrypts with KMS key                                     | `x-amz-server-side-encryption: aws:kms`<br>`x-amz-server-side-encryption-aws-kms-key-id: <KMS-Key-ID>` (optional if using default CMK)                                                          | Can use customer-managed CMK or default AWS CMK.            |
+    | **SSE-C (Customer-provided keys)** | You provide encryption key; S3 handles encryption/decryption | `x-amz-server-side-encryption-customer-algorithm: AES256`<br>`x-amz-server-side-encryption-customer-key: <base64-encoded-key>`<br>`x-amz-server-side-encryption-customer-key-MD5: <MD5-of-key>` | Key **not stored in AWS**; must provide with every request. |
+  - NOTE: SSE-C -  Amazon S3 does not store the encryption key you provide. 
+    - Instead, it is stored in a randomly salted HMAC value of the encryption key in order to validate future requests. 
+    - The salted HMAC value cannot be used to derive the value of the encryption key or to decrypt the contents of the encrypted object. 
+    - That means, if you lose the encryption key, you lose the object.
   - Fastest way to upload large files: Multipart upload with S3 transfer acceleration
     - Transfer Acceleration takes advantage of Amazon CloudFront’s globally distributed edge locations
     - Multipart upload:
@@ -616,6 +854,8 @@ NLB:
     - --max-items - How many items you want to show (for user pagination)
     - --page-size - how many items to request from AWS per API call -> for fine-tuning, not for user pagination
     - --starting-token - which page to start from (bookmark)
+    - If: max-items > page-size =>> you’ll get more pages fetched behind the scenes until your desired total is reached. 
+    - If max-items < page-size =>> you’ll get only one partial page.
   - S3 delivers strong read-after-write consistency automatically:
     - all S3 GET, PUT, and LIST operations, as well as operations that change object tags, ACLs, or metadata, are strongly consistent
     - What you write is what you will read, and the results of a LIST will be an accurate reflection of what’s in the bucket.
@@ -627,12 +867,29 @@ NLB:
     - When you upload an object, you can specify the KMS key using the x-amz-server-side-encryption-aws-kms-key-id header which you can use to require a specific KMS key for object encryption. 
     - If the header is not present in the request, Amazon S3 assumes the default KMS key.
   - S3 Object Lambda:
-    -  allows you to add your own code to S3 GET requests to modify and process data as it’s being returned to an application
+    - allows you to add your own code to S3 GET requests to modify and process data as it’s being returned to an application
     - use cases where data needs to be transformed on-the-fly without the need to store a transformed copy of the data: redacting PII data, resize images etc
+    - S3 Object Lambda + Access Points allow you to transform or redact S3 data per role or per request — all while keeping one master copy of the object.
+  - Scenario: S3 with SSE-KMS. Small files upload fine, large files (100GB) fail with Access denied
+    - Small files → single PUT → works with just kms:Encrypt
+    - Large files -> multipart upload → each part is encrypted separately:
+      - kms:Decrypt -> needed so S3 can read / decrypt files during upload 
+      - kms:GenerateDataKey* -> needed to generate encryption keys for each part
+  - Prevent hotlinking:
+    - Hotlinking = someone uses your hosted files (e.g. S3 images) on their site → you pay for it.
+    - Solution: Use CloudFront signed URLs or cookies → Only valid users with signed access can load the content
+    - Solution 2: Restrict S3 bucket access → Only allow requests through CloudFront (via OAI or OAC).
 
 - API Gateway:
   - Stages: used to manage and optimize a particular deployment (you can configure stage settings to enable caching, customize request throttling, configure logging, define stage variables, or attach a canary release)
-  - Handle multiple stages (dev, prod) -> use stage variables to configure different settings for each stage API
+    - Handle multiple stages (dev, prod) -> use stage variables to configure different settings for each stage API
+    - NOTE:
+      - Stage Variables are the correct and easiest way to pass stage-dependent configuration to a Lambda function.
+      - Environment variables are static per function version and won’t change automatically per API stage.
+    - A stage is a logical reference to a lifecycle state of your API (for example, dev, prod, beta, v2). 
+    - API stages are identified by the API ID and stage name. 
+    - They’re included in the URL that you use to invoke the API. 
+    - Each stage is a named reference to an API deployment and is made available for client applications to call.
   - Scenario: how to improve the performance of a popular API service?
     - Correct: Enable API caching in API Gateway
     - Incorrect: Set up usage plans and API keys in API Gateway -> to allow customers to access selected APIs, and send throttling requests to those APIs based on defined limits and quotas
@@ -646,6 +903,15 @@ NLB:
     - Endpoint policies for interface VPC endpoints - improve security of private APIs
     - Lambda authorizers - control access to REST API using bearer token auth
     - Amazon Cognito user pools
+    - NOTE: As an alternative to using IAM roles and policies or Lambda Authorizers (formerly known as custom authorizers), you can use an Amazon Cognito User Pool to control who can access your API in Amazon API Gateway.
+      - Create an Amazon Cognito User Pool. 
+        - This handles user registration, login, and JWT token generation. 
+      - On the API Gateway Console, create an authorizer using the Cognito User Pool ID 
+        - This tells API Gateway to verify JWT tokens against your Cognito User Pool.
+        - User pool ID = unique identifier
+      - Set the header name as token source (typically “Authorization”)
+        - When creating the authorizer in API Gateway, you MUST specify where the token will come from (e.g., Authorization header).
+
   - Scenario: application needs to send real-time alerts and notifications based on any updates from the backend services
     - Correct: WebSocket APIs:
       - WebSocket API use cases: 
@@ -673,7 +939,11 @@ NLB:
   - Metrics provided by API Gateway to Cloudwatch:
     - Monitor the IntegrationLatency metrics to measure the responsiveness of the backend. 
     - Monitor the Latency metrics to measure the overall responsiveness of your API calls. 
-    - Monitor the CacheHitCount and CacheMissCount metrics to optimize cache capacities to achieve a desired performance.
+    - Monitor the CacheHitCount and CacheMissCount metrics to optimize cache capacities to achieve a desired performance. -> only when caching is enabled
+    - Monitor 4XXError and 5XXError to see client and server side errors
+    - Monitor Count -> total nr of requests
+  - High IntegrationLatency → your Lambda or backend is the bottleneck. 
+  - High Latency but normal IntegrationLatency → API Gateway is delaying before/after calling the backend (throttling, mapping templates, etc.
   - API Keys:
     - In Amazon API Gateway, API keys by themselves do not grant access to execute an API. They need to be associated with a usage plan, and that usage plan then determines which API stages and methods the API key can access.
     - If the API key is not associated with a usage plan, it will not have permission to access any of the resources, which will result in a “403 Forbidden” error.
@@ -685,15 +955,15 @@ NLB:
       | **HTTP_PROXY**               | Custom HTTP microservice                          | ❌ No mapping (passes everything as-is)                                | Use when backend handles all request/response logic. Fast setup, no transformations.                     |
       | **AWS**                      | AWS service (Lambda, SQS, DynamoDB, etc.)         | ✅ Supports **custom mapping templates**                               | Use when you need fine-grained control over request/response mapping to AWS services.                    |
       | **AWS_PROXY (Lambda Proxy)** | Lambda function                                   | ❌ No mapping (entire request passed as event)                         | Use when Lambda handles parsing and response formatting. Quick, no transformations at API Gateway level. |
+  - Flow for HTTP and AWS integration types:
+    - Client -----> Method request -----> Integration request -----> Lambda ----->  Integration response -----> Method response -----> Client
+  - Scenario: API Gateway invokes Lambda ---> AWS Lambda Integration
   - Scenario: Analysts from a separate AWS account must interact with your REST API through an IAM role. The IAM role already has a policy that grants permission to invoke the API.
     - Set Method Authorization to AWS_IAM 
       - API Gateway will require requests to be signed with IAM credentials (SigV4). 
       - No custom authorizer or Cognito needed. 
     - Attach a Resource Policy to the API 
       - Grant execute-api:Invoke permission to the cross-account IAM role.
-
-
-
   - | **Status Code**                 | **Meaning**                                | **Root Cause / Common Scenario**                                                          | **Fix / What to Know for the Exam**                                                             |
     | ------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
     | **400 – Bad Request**           | The client sent a malformed request.       | Missing or invalid parameters, bad JSON body, wrong input mapping.                        | Fix the request or integration mapping template.                                                |
@@ -703,7 +973,16 @@ NLB:
     | **502 – Bad Gateway**           | Invalid response from backend integration. | Lambda didn’t return the expected JSON format or missing `statusCode`.                    | Fix Lambda integration response template or output format.                                      |
     | **503 – Service Unavailable**   | Backend temporarily unavailable.           | Target service (VPC link, HTTP endpoint, or private integration) is down or overloaded.   | Check the **integration endpoint health**; retry later or add retries with exponential backoff. |
     | **504 – Gateway Timeout**       | Integration didn’t respond in time.        | Backend (e.g., Lambda, HTTP service, VPC target) took too long (> 29 seconds for Lambda). | Optimize backend performance or use **asynchronous processing** (SNS, SQS, Step Functions).     |
-
+  - Gateway response types which are associated with the HTTP 504 error in API Gateway:
+    - INTEGRATION_FAILURE – The gateway response for an integration failed error. => Lambda does not work at all
+    - INTEGRATION_TIMEOUT – The gateway response for an integration timed-out error (>29sec). If the response type is unspecified, this response defaults to the DEFAULT_5XX type.
+  - API Gateway Import API feature:
+    - import a REST API from an external definition file into API Gateway
+    - You can paste a Swagger API definition in the AWS Console to create a new API and populate it with the resources and methods from your Swagger or OpenAPI definition
+    - You can also import your Swagger definition through the AWS CLI and SDKs.
+  - API Gateway only supports HTTPS, not HTTP.:
+    - HTTPS is automatically enabled with an Amazon-managed certificate when you deploy your API.
+    - Endpoint format: https://{restapi_id}.execute-api.{region}.amazonaws.com/{stage_name}/
 
   ![img.png](img.png)
 
@@ -711,6 +990,11 @@ NLB:
   - Scenario: Lambda invoked via API Gateway that anyone can access. How can you control access using 3rd party auth mechanism?
     - Correct: Lambda authorizer - uses bearer token authentication strategies, such as OAuth or SAML
     - Incorrect: Cognito User Pools - managed by AWS so it does not meet the scenario criteria
+  - Lambda authorizer:
+    - Two types:
+      - Token based -> eceives the caller’s identity in a bearer token - JWT or OAUTH
+      - Request parameter-based -> receives the caller’s identity in a combination of headers, query string parameters, stageVariables, and $context variables.
+    - Cross-Account Lambda Authorizer -> to use an AWS Lambda function from an AWS account that is different from the one in which you created your Lambda authorizer function
   - Scenario: how to deploy an AWS Lambda function that requires significant CPU utilization?
     - Correct: Deploy the function with its memory allocation set to the maximum amount => Lambda allocates CPU power in proportion to the amount of memory configured
   - Scenario: BIG sale incoming - how to make sure your application's Lambda function does not hit latency bottlenecks as a result of the traffic spike?
@@ -749,20 +1033,95 @@ NLB:
     - RequestResponse (default) – synchronously. Keep the connection open until the function returns a response or times out. The API response includes the function response and additional data. 
     - Event – asynchronously. Send events that fail multiple times to the function’s dead-letter queue (if it’s configured). The API response only includes a status code. 
     - DryRun – Validate parameter values and verify that the user or role has permission to invoke the function.
-  - Scenario: Lambda function takes a maximum of 50 seconds for every execution with 10 requests per second
-    - = (10 events per second) x (50 seconds average execution duration) = 500 concurrent executions -> well within the default concurrency limit, so Lambda will scale automatically without any intervention
-  - Scenario: Lambda function takes an average of 100 seconds for every execution with 50 requests per second:
-    - = (50 events per second) x (100 seconds average execution duration) =  5,000 concurrent executions -> request for AWS to increase the limit of your concurrent executions.
-  - Whenever you see InvalidParameterValueException in a Lambda create-function or update-function-configuration question → immediately check the IAM role’s trust policy or role ARN — that’s almost always the root cause.
+  - Concurrency calculation:
+    - Event-driven concurrency (e.g., API Gateway, S3, direct invokes) -> Lambda scales based on incoming requests.
+      - Scenario: Lambda function takes a maximum of 50 seconds for every execution with 10 requests per second
+        - = (10 events per second) x (50 seconds average execution duration) = 500 concurrent executions -> well within the default concurrency limit, so Lambda will scale automatically without any intervention
+      - Scenario: Lambda function takes an average of 100 seconds for every execution with 50 requests per second:
+        - = (50 events per second) x (100 seconds average execution duration) =  5,000 concurrent executions -> request for AWS to increase the limit of your concurrent executions.
+    - Stream-based concurrency (e.g., Kinesis, DynamoDB Streams) -> Different rule! Here concurrency is limited by shards (each shard = ONE active Lambda invocation)
+      - Scenario: 100 shards -> At most 100 concurrent Lambda executions, regardless of event rate. (Lambda processes data sequentially per shard to preserve order)
+  - Whenever you see InvalidParameterValueException in a Lambda create-function or update-function-configuration question → immediately check the IAM role’s trust policy or role ARN — that’s almost always the root cause
   - Lambda in VPC needs internet access:
     - add a NAT gateway to your VPC. 
     - ensure that the associated security group of the Lambda function allows outbound connections.
+  - By default, AWS Lambda runs in an isolated AWS-managed environment, not in your VPC.
+    - If your Lambda function needs to access private resources (like RDS, EC2, or ElastiCache) that are inside your VPC, you must configure it to connect to your VPC.
+    - When you attach a Lambda function to a VPC:
+      - Lambda creates an Elastic Network Interface (ENI) in your VPC’s subnets. 
+      - his ENI is used for network connectivity between your function and VPC resources (e.g., RDS, EC2). 
+      - The ENI is associated with a private IP address, not a public one. 
+      - Lambda uses that ENI whenever your function runs — it’s how it talks securely to your private VPC.
   - Traffic shifting:
     - sending a percentage of invocations to the new version gradually.
     - This is built into Lambda Aliases using CodeDeploy integration.
     - Automatic rollback if metrics cross thresholds.
     - you can implement the routing-config parameter of the Lambda alias that allows you to point to two different versions of the Lambda function and dictate what percentage of incoming traffic is sent to each version.
-  
+  - Lambda layers:
+    - Layers reduce duplicate code and deployment size.
+    - Each function version includes the specific layer versions it references — updating a layer does not automatically update old Lambda versions. 
+    - You can share layers securely using resource-based policies. 
+    - /opt is the key directory
+    - The total unzipped size of the function and all layers can’t exceed the unzipped deployment package size limit of 250 MB.
+  - Lambda DLQ:
+    - DLQs apply only to asynchronous invocations (e.g., from S3, SNS, EventBridge). 
+      -  DeadLetterConfig:
+          - TargetArn: arn:aws:sqs:us-east-1:123456789012:MyDLQ
+    - Retries: Lambda retries async events twice (for a total of 3 attempts). 
+    - If still failing → event goes to DLQ (SQS or SNS). 
+    - The target (DLQ) must grant permissions to Lambda to send messages.
+  - Scenario: create Lambda using C++
+    - Correct: Create a new layer which contains the Lambda Custom Runtime for C++ and then launch a Lambda function which uses that runtime.
+    - A custom runtime lets you modify how Lambda runs your function’s setup code and how it reads invocation events from the Lambda Runtime API. 
+    - You provide an executable file named bootstrap in the runtime that interacts directly with the Lambda Runtime API.
+  - NOTE: AWS Lambda natively supports Java, Go, PowerShell, Node.js, C#, Python, and Ruby code
+  - Below are some of the best practices in working with AWS Lambda Functions:
+    - Separate the Lambda handler (entry point) from your core logic. 
+    - Take advantage of Execution Context reuse to improve the performance of your function 
+    - Use AWS Lambda Environment Variables to pass operational parameters to your function. 
+    - Control the dependencies in your function’s deployment package. 
+    - Minimize your deployment package size to its runtime necessities. 
+    - Reduce the time it takes Lambda to unpack deployment packages 
+    - Minimize the complexity of your dependencies 
+    - Avoid using recursive code
+  - The concurrent execution limit is enforced against the sum of the concurrent executions of all functions.
+    - f one function consumes most of the concurrency, others might throttle. 
+    - Important for performance tuning and avoiding throttling errors (429).
+  - Reduce cold start time:
+    - Less is more -> less dependencies etc
+    - Reduce the deployment package’s size by including only the needed modules from the AWS SDK for Java. 
+    - Increase the memory allocation setting for the Lambda function.
+  - ModuleNotFoundError and Module cannot be loaded error:
+    - These errors are usually due to an incorrect folder structure or file permissions with the deployment package .zip file. 
+    - To fix this error:
+      - Install all dependency modules local to the function project. 
+      - Build the deployment package by zipping up the project folder for deployment to Lambda. 
+      - Upload the deployment package.
+    - NOTE: The modules and your Lambda code must be under the same directory level before packaging them into a ZIP file.
+  - Lambda ---> Cloudwatch needs the managed policy AWSLambdaBasicExecutionRole giving permissions:
+    - logs:CreateLogGroup 
+    - logs:CreateLogStream 
+    - logs:PutLogEvents
+  - CloudWatch Embedded Metric Format (EMF):
+    - allows your Lambda function to write logs that include custom metrics directly ===> CloudWatch automatically extracts these metrics from the logs and makes them available in CloudWatch Metrics.
+    - ✔ No need to call PutMetricData manually → faster and cheaper 
+    - ✔ Works natively with Lambda + CloudWatch Logs 
+    - ✔ Supports high-cardinality & structured log data 
+    - ✔ Can set CloudWatch Alarms for anomalies in near real-time 
+    - ✔ Ideal for serverless + Step Functions monitoring
+  - Scenario: Lambda function to return the corresponding log location of an invocation request:
+    -  Correct: Extract the log stream name from the Context object of the handler function. (context.log_stream_name)
+  - Lambda function URL:
+    - simple way to configure an HTTPS endpoint in front of your Lambda function without having to learn and configure additional services
+    - There are two types of authorization available for Lambda function URLs:
+      - AWS_IAM  - the function URL can only be invoked by an IAM user or role with the necessary permissions. 
+      - NONE - anyone can invoke the Lambda function using the URL. 
+        - "lambda:FunctionUrlAuthType": "NONE"
+  - Scenario: Test Lambda defined in CDK along other services locally:
+    - sam local invoke - test AWS Lambda functions locally by emulating the Lambda execution environment
+    - however, to test resources defined in AWS CDK, you must first convert the CDK constructs into a format that SAM can understand. 
+      - cdk synth command -> synthesizes or "compiles" your CDK application into an AWS CloudFormation template.
+
 - Route53:
   - Scenario: Route www.mydomain.com to an application hosted by a 3rd party and exposed at yourapp.3rdparty.com
     - Correct: create a CNAME record
@@ -814,7 +1173,7 @@ NLB:
     - Incorrect: Use CloudFront signed cookies:
       - CloudFront signed cookies allow you to control who can access your content when you don't want to change your current URLs or when you want to provide access to multiple restricted files
       - Signed URLs take precedence over signed cookies
-  - Scenario: static content hosted on the EC2 instances takes too long to loadx
+  - Scenario: static content hosted on the EC2 instances takes too long to load
     - Correct:
       - 1. Transfer the application’s static content hosted on EC2 instances to Amazon S3
       - 2. Set up an Amazon CloudFront distribution to cache the static content with Amazon S3 configured as the origin
@@ -872,6 +1231,20 @@ NLB:
       - ACM certificate in us-east-1 from AWS Certificate Manager (ACM).
       - Viewer Protocol Policy = Redirect HTTP to HTTPS or HTTPS Only 
     - Secure communication between CloudFront and origin (e.g., ALB, S3, API Gateway) → Use Origin Protocol Policy = HTTPS Only or Match Viewer.
+  - | **Event Type**      | **CloudFront Function** | **Lambda@Edge** | **Typical Use Case**                                                     |
+    | ------------------- | ----------------------- | --------------- | ------------------------------------------------------------------------ |
+    | **Viewer Request**  | ✅ Yes                   | ✅ Yes           | Auth (JWT validation), URL rewrite, redirects, header normalization      |
+    | **Origin Request**  | ❌ No                    | ✅ Yes           | Modify request before sending to origin, add auth tokens, custom headers |
+    | **Origin Response** | ❌ No                    | ✅ Yes           | Process data from origin, manipulate response body before caching        |
+    | **Viewer Response** | ✅ Yes                   | ✅ Yes           | Add security headers, modify response headers, small response generation |
+  - NOTES:
+    - CloudFront Functions can only see headers and URL, not body, is very fast, no network access to call other services. 
+    - Lambda@Edge can read and modify body, but costs more and is slower, can call APIs, DynamoDB etc
+  - Scenario: Update files when using Cloudfront to reflect immediately:
+    - When using CloudFront with S3, objects are cached in edge locations. If you update a file in S3 that has the same name (e.g., banner.jpg), CloudFront will continue serving the old cached version until it expires or is invalidated.
+    - Option 1: Invalidate objects -> costly, not ideal for frequent updates
+    - Option 2: Versioned file names (image_v2.jpg or image.jpg?version=2) -> CloudFront instantly fetches the updated image from S3
+
 
 - ECS:
   - Scenario: API hosted in ECS. App processes messages using SQS. ApproximateNumberOfMessagesVisible metric spikes but all other metrics are ok.
@@ -906,10 +1279,38 @@ NLB:
     - Check whether a log stream exists within that group — that requires DescribeLogStreams. 
     - If the stream does not exist, call CreateLogStream. 
     - Send log events with PutLogEvents.
-  - Task placement strategy:
+  - Task placement strategy (EC2):
     - binpack – Place tasks based on the least available amount of CPU or memory. This minimizes the number of instances in use. 
     - random – Place tasks randomly. 
-    - spread – Place tasks evenly based on the specified value. Accepted values are attribute key-value pairs, instanceId, or host
+    - spread – Place tasks evenly based on the specified "field" value. Accepted values are attribute key-value pairs, instanceId, or host:
+      - ex: "field": "attribute:ecs.availability-zone"
+    - NOTE: AWS automatically spreads Fargate tasks across Availability Zones.
+  - To use X-Ray:
+    - create a Docker image that runs the X-Ray daemon, upload it to a Docker image repository, and then deploy it to your Amazon ECS cluster
+    - use port mappings and network mode settings in your task definition file to allow your application to communicate with the daemon container.
+    - The AWS X-Ray daemon is a software application that listens for traffic on UDP port 2000
+  - ECS Launch types and IAM roles:
+    - Fargate launch type 
+      - AWS manages the underlying compute. 
+      - There are no EC2 instances that you manage. 
+      - Each task needs its own IAM role (called a Task Role) to access AWS resources. 
+    - EC2 launch type 
+      - You manage EC2 instances (container hosts). 
+      - You assign an IAM role to the EC2 instance (called a Container Instance Role). 
+      - All containers running on that instance inherit the instance role’s permissions.
+  - Deployment with CodeDeploy:
+    - The only required properties in AppSpec.yml under Resources:
+      - TaskDefinition  – This is the task definition for the Amazon ECS service to deploy. It is specified with the ARN of the task definition. 
+      - ContainerName – This is the name of the Amazon ECS container that contains your Amazon ECS application. It must be a container specified in your Amazon ECS task definition. 
+      - ContainerPort – This is the port on the container where traffic will be routed.
+  - Cluster Queries Language (CQL)
+    - Definition: Expressions that allow you to group container instances based on attributes. 
+    - Use Case: Filter or target tasks to specific instances when launching manually. 
+    - Example: Group by Availability Zone, instance type, or custom metadata. 
+  - Container Instance Attributes 
+    - Built-in Attributes: Provided by ECS (e.g., ecs.availability-zone, ecs.instance-type). 
+    - Custom Attributes: User-defined key-value pairs (e.g., "gpu": "true"). 
+    - Purpose: Enables fine-grained placement of tasks.
 
 - AWS Fargate:
   - serverless compute engine for containers that works with both Amazon Elastic Container Service (ECS) and Amazon Elastic Kubernetes Service (EKS
@@ -932,7 +1333,7 @@ NLB:
   - Scenario: you want to package the code and dependencies for the app-specific Lambda functions as container images to be hosted on Amazon Elastic Container Registry (ECR).
     - Correct: To deploy a container image to Lambda, the container image must implement the Lambda Runtime API
       - You can add a runtime interface client to your preferred base image to make it compatible with Lambda
-    - CorrecT: AWS Lambda service does not support Lambda functions that use multi-architecture container images
+    - Correct: AWS Lambda service does not support Lambda functions that use multi-architecture container images
     - Correct: Lambda currently supports only Linux-based container images.
     - Correct: You can test the containers locally using the Lambda Runtime Interface Emulator.
     - Correct: You can deploy Lambda function as container image with the maximum size of 10GB.
@@ -995,10 +1396,83 @@ NLB:
     - applications running outside of an AWS environment will need access keys for programmatic access to AWS resources
     - Access keys are long-term credentials for an IAM user or the AWS account root user. You can use access keys to sign programmatic requests to the AWS CLI or AWS API (directly or using the AWS SDK).
     - In order to use the AWS SDK for your application, you have to create your credentials file first at ~/.aws/credentials for Linux servers or at C:\Users\USER_NAME\.aws\credentials for Windows users and then save your access keys.
+  - IAM Policy simulator:
+    - evaluates the policies that you choose and determines the effective permissions for each of the actions that you specify
+    - The simulator does not make an actual AWS service request
+    - If your AWS account is a member of an organization in AWS Organizations, then you can test the impact of service control policies (SCPs) on your IAM policies and resource policies.
+  - Cross-account IAM roles 
+    - Accounts B and C can create IAM roles allowing a trusted principal from Account A (the developer) to assume the role. 
+    - The developer can assume the role via the AWS CLI, SDK, or Console using sts:AssumeRole. 
+    - No need to maintain separate IAM users or passwords in each account.
+  - Best practices:
+    - Root User 
+      - ❌ Do not create access keys for root user. 
+      - ✅ Delete any existing root user access keys. 
+      - Use root user only for account setup or emergency. 
+    - IAM Users & Applications 
+      - ✅ Use IAM Roles for applications instead of hardcoding access keys. 
+      - ✅ Rotate access keys regularly for all users (including admin)
+      - ❌ Never embed access keys in code, scripts, or repos. 
+    - Principle of Least Privilege 
+      - ive users/apps only the permissions they need. 
+      - Avoid “administrator” unless absolutely required. 
+    - Temporary Credentials 
+      - Use STS or IAM Roles to generate temporary credentials for applications. 
+      - Automatically expire and rotate, reducing security risk.
 
 - AWS STS:
   - web service that enables you to request temporary, limited-privilege credentials for AWS Identity and Access Management (IAM) users or for users that you authenticate (federated users)
   - Credentials that are created by using account credentials can range from 900 seconds (15 minutes) up to a maximum of 3,600 seconds (1 hour), with a default of 1 hour
+  - AssumeRole -> creates a new session with temporary credentials. 
+    - This session has the same permissions as the identity-based policies for that role.
+    - you can optionally pass inline or managed session policies
+  - AssumeRoleWithWebIdentity -> returns a set of temporary security credentials for federated users who are authenticated through public identity providers such as Amazon, Facebook, Google, or OpenID
+  - AssumeRoleWithSAML -> returns a set of temporary security credentials for users who have been authenticated via a SAML
+  - GetFederationToken ->  returns a set of temporary security credentials (consisting of an access key ID, a secret access key, and a security token) for a federated user.
+  - GetSessionToken -> used to return a set of temporary credentials for an AWS account or IAM user only:
+    - Credentials: keyID, secret access key, security token
+    - GetSessionToken is usually used when you want MFA
+  - Scenarios:
+    - Custom identity broker → bridges non-SAML LDAP and AWS STS. 
+    - IAM Identity Center (SSO) → for SAML/SCIM-compatible identity providers.
+
+- Cognito user pools:
+  - Adaptive authentication:
+    - you can configure your user pool to block suspicious sign-ins or add second factor authentication in response to an increased risk level
+    - can require multi-factor authentication (MFA) for a user in your user pool when Amazon Cognito detects risk in a user’s session, and the user hasn’t yet chosen an MFA method
+  - You can use the AWS Management Console, or the AWS CLI or API, to specify customization settings for the built-in app UI experience. 
+    - You can upload a custom logo image to be displayed in the app. 
+    - You can also choose many CSS customizations.
+
+- Cognito identity pools:
+  - Scenario: generate unique ID per user across multiple platforms and devices with your own auth system
+    - Cognito Identity Pools (a.k.a. Federated Identities) with Developer-Authenticated Identities lets you do exactly this
+      - You authenticate users in your own system (login, password, database, etc.). 
+      - You then send that verified user info to Cognito Identity Pool. 
+      - Cognito returns a unique, permanent identity ID
+    - NOTE: Normally, Cognito trusts identity from Google, Facebook, Apple, or its own User Pool. 
+      - When you provide the identity instead (your own auth system), Cognito needs proof it can trust you → that’s why you must call GetOpenIdTokenForDeveloperIdentity from your backend using AWS credentials.
+  - Flow:
+    - User signs in (User Pool, Google, Facebook, Apple, etc.). 
+    - Cognito User Pool returns:
+      - ID Token (JWT)
+      - Access Token 
+      - Refresh Token 
+    - The app sends the ID Token to the Identity Pool. 
+    - Identity Pool:
+      - Validates the token. 
+      - Returns a Cognito Identity ID. 
+    - Then AWS STS returns:
+      - Temporary AWS credentials (Access Key, Secret Key, Session Token)
+
+- Cognito Sync:
+  - AWS service and client library that enables cross-device syncing of application-related user data
+  - You can use it to synchronize user profile data across mobile devices and the web without requiring your own backend
+  - The Amazon Cognito Sync client creates a local cache for the identity data. Your app talks to this local cache when it reads and writes keys
+
+- AWS AppSync:
+  - It enables user data like app preferences or game state to be synchronized as well however, 
+  - Difference to Cognito sync is that it also extends these capabilities by allowing multiple users to synchronize and collaborate in real time on shared data.
 
 - AWS Budgets:
   - lets customers set custom budgets and receive alerts if their costs or usage exceed (or are forecasted to exceed) their budgeted amount.
@@ -1007,7 +1481,7 @@ NLB:
 
 - EventBridge:
   - You can create a Lambda function and direct EventBridge to execute it on a regular schedule
-    - ou can specify a fixed rate (for example, execute a Lambda function every hour or 15 minutes), or you can specify a Cron expression.
+    - you can specify a fixed rate (for example, execute a Lambda function every hour or 15 minutes), or you can specify a Cron expression.
 
 - X-Ray:
   - X-Ray sampling = Sampling rules tell the X-Ray SDK how many requests to record for a set of criteria
@@ -1039,6 +1513,49 @@ NLB:
     - X-Ray indexes up to 50 annotations per trace.
   - Metadata:
     - key-value pairs with values of any type, including objects and lists, but that are not indexed -> not used for filtering
+  - Client → API Gateway → App (Segment)
+    ├─ Subsegment: DynamoDB
+    ├─ Subsegment: Call to App B
+    └─ Subsegment: External API → [Inferred Segment]
+  - Subsegments - used for:
+    - AWS service calls (e.g., DynamoDB, S3)
+    - External HTTP API calls 
+    - Database queries (SQL, NoSQL)
+    - Custom code sections you want to measure manually (ex: specific method)
+  - API:
+    - GetTraceSummaries -> Returns high-level trace summaries (duration, status, etc.)
+    - BatchGetTraces -> Returns full trace data (segments + subsegments + inferred segments)
+    - PutTraceSegments -> used to send trace data (segment documents) from your application to AWS X-Ray (for custom data)
+      - if you’re asked to record the calls your application makes to all AWS services and resources -> add sub-segments to the API call
+  - ✅ namespace = aws → AWS SDK calls 
+  - ✅ namespace = remote → non-AWS downstream calls 
+  - ✅ annotations = searchable tags 
+  - ✅ metadata = detailed custom data (not searchable)
+  - ✅ inferred segments = downstream services auto-detected by X-Ray
+  - X-RAY IAM managed policies:
+    - Developers debugging apps → AWSXRayReadOnlyAccess 
+    - Applications uploading traces → AWSXRayDaemonWriteAccess 
+    - Admin tasks (config/sampling/encryption) → AWSXrayFullAccess
+  - Filtering based on annotations:
+    - Correct:
+      - GetTraceSummaries API -> lets you programmatically retrieve trace IDs and associated annotations for further analysis.
+      - and filter expressions in the X-Ray console allow you to quickly find traces that match specific annotation values—minimal configuration required.
+    - NOTE: BatchGetTraces retrieves full trace data for a list of trace IDs; it doesn’t directly allow filtering based on annotations.
+
+- AWS Distro for OpenTelemetry (ADOT)
+  - ADOT is AWS’s managed distribution of OpenTelemetry. 
+    - OpenTelemetry is an open-source standard for collecting metrics, logs, and traces from applications. 
+    - ADOT lets you collect telemetry data from your apps and send it to multiple backends (X-Ray, Prometheus, Jaeger, etc.) without changing your code
+  - NOTE:
+    - Use ADOT when you want multi-backend tracing or minimal code changes. 
+    - Use X-Ray SDK when you want a single AWS tracing solution with tight integration.
+  - Strengths:
+    - Can send traces to multiple backends (X-Ray, Prometheus, Jaeger, etc.). 
+    - Supports auto-instrumentation for Java, Python, Node.js. 
+    - Collects HTTP, SDK, JDBC calls without modifying code. 
+    - Fully managed Lambda layers for easy deployment. 
+  - Limitations:
+    - Broader, community-supported → less “AWS-only” tight integration.
 
 - CloudWatch:
   - You can publish your own metrics, known as custom metrics, to CloudWatch using the AWS CLI or an API. 
@@ -1056,10 +1573,16 @@ NLB:
       - can collect logs from Amazon EC2 instances and on-premises servers, running either Linux or Windows Server.
       - can Retrieve custom metrics from your applications or services using the StatsD and collectd protocols.
     - To enable the CloudWatch agent to send data from an on-premises server, you must specify the access key and secret key of the IAM user that you created earlier.
+    - Aside from the usual metrics, it also tracks the memory, swap, and disk space utilization metrics of your server.
   - When you create an alarm, you specify three settings to enable CloudWatch to evaluate when to change the alarm state:
     - Period - How long each metric data point represents (e.g., 60 seconds).
     - Evaluation Period - How many past periods the alarm looks at when deciding its state.
     - Datapoints to Alarm - How many of those evaluation periods must breach the threshold to trigger the alarm.
+  - CloudWatch Metrics Basics 
+    - Metrics are organized by namespace, metric name, and dimensions. 
+    - Namespace = container for related metrics. (ex: AWS/EC2)
+    - Dimensions = optional key/value pairs to uniquely identify metrics (e.g., InstanceId, ApplicationName).
+    - ===> Custom namespace + unique metric names = visual, application-specific monitoring in CloudWatch.
 
 - CodeCommit:
   - Credential types supported:
@@ -1089,7 +1612,8 @@ NLB:
     - You can provide a KMS key to use in the buildspec.yml -> CODEBUILD_KMS_KEY_ID
   - AWS CodeBuild agent:
     - You can use the AWS CodeBuild agent to test and debug builds on a local machine
-    - t is not possible to SSH into the CodeBuild Docker container, that's why you should test and fix errors locally.
+    - it is not possible to SSH into the CodeBuild Docker container, that's why you should test and fix errors locally.
+    - 
 
 - CodeDeploy:
   - appspec.yml file in the root directory of the app's source code. 
@@ -1100,11 +1624,18 @@ NLB:
     - During deployment, the CodeDeploy agent looks up the name of the current event in the hooks section of the AppSpec file. 
       - If the event is not found, the CodeDeploy agent moves on to the next step. 
       - If the event is found, the CodeDeploy agent retrieves the list of scripts to execute.
-  - Lifecycle hooks:
+  - Lifecycle hooks (EC2):
     - ValidateService - last deployment event, used to verify the deployment was completed successfully.
     - AfterInstall - You can use this deployment lifecycle event for tasks such as configuring your application or changing file permissions
     - ApplicationStart - You typically use this deployment lifecycle event to restart services that were stopped during ApplicationStop
     - AllowTraffic - During this deployment lifecycle event, internet traffic is allowed to access instances after a deployment. This event is reserved for the AWS CodeDeploy agent and cannot be used to run scripts
+    - Summary:
+      - EC2 / On-Premises: think “BeforeInstall → AfterInstall → ApplicationStart → ValidateService” 
+      - Lambda / ECS: think “BeforeAllowTraffic → AfterAllowTraffic” 
+    - Scenario: DownloadBundle deployment lifecycle throws error: UnknownError: not opened for reading error ==> Possible causes:
+      - The EC2 instance’s IAM profile does not have permission to access the application code in the Amazon S3. 
+      - An Amazon S3 internal error occurs. 
+      - The instances you deploy to are associated with one AWS Region (for example, US West Oregon), but the Amazon S3 bucket that contains the application revision is related to another AWS Region (for example, US East N. Virginia).
   - Scenario: Developers now have full control over modeling the entire software delivery process, from coding to deployment. As the team lead, you are now responsible for any manual approvals needed in the process
     - Correct: Create one CodePipeline for your entire flow and add a manual approval step
       - Note: Approval actions can't be added to Source stages. Source stages can contain only source actions.
@@ -1113,6 +1644,8 @@ NLB:
   - AWS CodePipeline supports Amazon Virtual Private Cloud (Amazon VPC) endpoints powered by AWS PrivateLink. 
     - This means you can connect directly to CodePipeline through a private endpoint in your VPC, keeping all traffic inside your VPC and the AWS network.
   - CodeDeploy Agent:
+    - required only if you deploy to an EC2/On-Premises compute platform
+    - communicates outbound using HTTPS over port 443.
     - archives revisions and log files on instances.
     - cleans up these artifacts to conserve disk space
     - :max_revisions: -> option in the agent configuration file to specify the number of application revisions to the archive
@@ -1136,13 +1669,22 @@ NLB:
         - Production → live users 
       - Each group targets a different set of EC2 instances using tags or ASG. 
       - CodeDeploy handles rolling or blue/green updates.
-  - CodeDeploy supports the following deployment configurations:
-    - In-place (for EC2/On-premises) – the application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started and validated. 
-    - Canary (for Lambda/ECS) – traffic is shifted in two increments. You can choose from predefined canary options that specify the percentage of traffic shifted to your updated Lambda function or ECS task set in the first increment and the interval, in minutes, before the remaining traffic is shifted in the second increment. 
-    - Linear (for Lambda/ECS) – traffic is shifted in equal increments with an equal number of minutes between each increment. You can choose from predefined linear options that specify the percentage of traffic shifted in each increment and the number of minutes between each increment. 
-    - All-at-once (for Lambda/ECS) – all traffic is shifted from the original Lambda function or ECS task set to the updated function or task set all at once.
+  - Automates deployments on:
+    - Amazon EC2 instances, 
+    - on-premises instances, 
+    - serverless Lambda functions, 
+    - Amazon ECS services
 
+  - | **Service**                         | **Deployment Types**                                                                                                           | **Key Concept / How It Works**                                                                                                                                                                                                                                                                                       | **Exam Tips**                                                                                                                                                |
+    | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+    | **🟦 CodeDeploy (EC2/On-Premises)** | 🔹 **In-Place** <br> 🔹 **Blue/Green (EC2 only)**                                                                              | **In-Place:** Stops app on existing EC2/on-prem instances and deploys the new version on the same ones.<br>**Blue/Green:** Creates a *new set of EC2 instances* (green), tests them, then shifts traffic from blue → green.                                                                                          | ❗Blue/Green works **only with EC2**, not on-prem.<br>❗In-Place = downtime risk.<br>Hooks in `AppSpec.yml` are different per platform (EC2 vs Lambda vs ECS). |
+    | **🟩 CodeDeploy (Lambda)**          | 🔹 **Blue/Green only**                                                                                                         | Deploys a **new version** of the Lambda function, then shifts traffic gradually between versions using an **alias** (e.g., 10%, 50%, 100%).                                                                                                                                                                          | Hooks like `BeforeAllowTraffic`, `AfterAllowTraffic` are used.<br>❗No “In-Place” deployment for Lambda.                                                      |
+    | **🟧 CodeDeploy (ECS)**             | 🔹 **Blue/Green only**                                                                                                         | Creates a **new task set** behind the ECS service’s load balancer. Gradually shifts traffic from the old task set to the new one.                                                                                                                                                                                    | ❗Always tied to **ECS service + ALB**.<br>❗Blue = old task set, Green = new task set.                                                                        |
+    | **🟩 Elastic Beanstalk**            | 🔹 **All-at-once**<br>🔹 **Rolling**<br>🔹 **Rolling with additional batch**<br>🔹 **Immutable**<br>🔹 **Blue/Green (manual)** | **All-at-once:** Replaces all instances at once → fast but downtime.<br>**Rolling:** Updates in batches → some downtime.<br>**Rolling with extra batch:** Creates temp capacity → no downtime.<br>**Immutable:** Creates new instances (safe but slow).<br>**Blue/Green:** Clone environment, test, and swap CNAMEs. | ❗Immutable = safest.<br>❗Blue/Green = manual (via environment clone + CNAME swap).<br>❗All-at-once = fastest but downtime.                                   |
+    | **🟦 ECS (without CodeDeploy)**     | 🔹 **Rolling update**                                                                                                          | ECS replaces old tasks with new ones gradually (configured by service deployment parameters).                                                                                                                                                                                                                        | ❗“Minimum healthy percent” & “Maximum percent” control rollout speed.                                                                                        |
+    | **🟩 Lambda (without CodeDeploy)**  | 🔹 **Version + Alias (manual traffic shifting)**                                                                               | You can manually publish new versions and shift alias traffic weights (e.g., 90% old, 10% new).                                                                                                                                                                                                                      | ❗If CodeDeploy isn’t used, traffic shifting is manual.                                                                                                       |
 
+  
 
 - CodePipeline:
   - CodePipeline is a fully managed continuous delivery service
@@ -1151,10 +1693,23 @@ NLB:
     - Correct: Source code in CodeCommit -> start AWS Pipeline whenever a change is pushed
     - Correct: Source code in S3 bucket -> start AWS Pipeline whenever a file is updated
     - When you use the console to create a pipeline that has a CodeCommit source repository or S3 source bucket, CodePipeline creates an Amazon EventBridge rule that starts your pipeline when the source changes
+  - You can implement a manual approval actions configuration in CodePipeline:
+    - You can configure an approval action to publish a message to an SNS topic
+  - You can monitor CodePipeline events in EventBridge
+    - EventBridge routes that data to targets such as Lambda functions and Simple Notification Service (SNS) topics.
 - 
 - Step Functions:
   - AWS Step Functions is a serverless function orchestrator that makes it easy to sequence AWS Lambda functions and multiple AWS services into business-critical applications
   - The output of one step acts as an input to the next
+  - | Term               | What It Means                              | Example                           |
+    | ------------------ | ------------------------------------------ | --------------------------------- |
+    | **State Machine**  | The whole workflow definition              | Order processing flow             |
+    | **State**          | A step in workflow                         | Run Lambda, wait, choice          |
+    | **Task State**     | Runs work — usually a Lambda function      | `"Type": "Task"`                  |
+    | **Choice State**   | If/Else logic                              | Branching depending on input      |
+    | **Parallel State** | Run multiple branches **at the same time** | Process images & logs in parallel |
+    | **Wait State**     | Pause for a time or until timestamp        | Delay retry by 5 min              |
+    | **Pass State**     | Just pass input/output                     | Test state machine                |
   - Benefits of Step Functions:
     - Build and update apps quickly: AWS Step Functions lets you build visual workflows that enable the fast translation of business requirements into technical requirements.
     - Improve resiliency: AWS Step Functions manages state, checkpoints and restarts for you to make sure that your application executes in order and as expected. Built-in try/catch, retry and rollback capabilities deal with errors and exceptions automatically. 
@@ -1179,11 +1734,35 @@ NLB:
       - any state that has End field = true -> considered terminal state for the current branch
     - In AWS Step Functions, activities are a way to associate code running somewhere (known as an activity worker) with a specific task in a state machine:
       - Ex: an activity worker can be an application running on an Amazon EC2 instance or an AWS Lambda function
-  - Scenario: Step Functions must pause until an external system responds (webhook, human approval, payment validation
+  - Scenario: Step Functions must pause until an external system responds (webhook, human approval, payment validation)
     - Always choose waitForTaskToken + SendTaskSuccess:
       - Step Functions will generate a unique Task Token (like a temporary ticket ID). 
       - The workflow pauses and waits until someone calls back with that token.
       - The webhook handler in your app should call SendTaskSuccess (or SendTaskFailure if it failed) using the same task token.
+  - Error Handling — Retry and Catch 
+    - Retry = Try the state again automatically if it fails. 
+    - Catch = If all retries fail, go to another state to handle the failure.
+    - | Field             | Purpose                                            |
+      | ----------------- | -------------------------------------------------- |
+      | `ErrorEquals`     | Which errors to catch or retry (or `"States.ALL"`) |
+      | `IntervalSeconds` | Time before retry                                  |
+      | `MaxAttempts`     | How many retries                                   |
+      | `BackoffRate`     | Exponential delay factor                           |
+      | `Next`            | What state to go to after error is caught          |
+      | `ResultPath`      | Where to store error output                        |
+    - NOTE: To capture errors and retain state data in Step Functions:
+      - ➝ Use Catch for error handling 
+      - ➝ Use ResultPath to append each state’s result to the input so data is preserved across states.
+    - Step Functions + Other AWS Services:
+      - | Service                   | How They Integrate                        |
+        | ------------------------- | ----------------------------------------- |
+        | **Lambda**                | Most common — runs as Task states         |
+        | **ECS / Fargate / Batch** | Can run containers or batch jobs          |
+        | **SNS / SQS**             | Send messages between states              |
+        | **DynamoDB**              | Read/write data in a task                 |
+        | **API Gateway**           | Can trigger Step Functions via HTTP calls |
+        | **EventBridge**           | Can trigger Step Functions automatically  |
+
 
 - CodeStar:
   - enables you to quickly develop, build, and deploy applications on AWS
@@ -1203,3 +1782,12 @@ NLB:
       - SensitiveData:S3Object/Financial
       - SensitiveData:S3Object/Personal
       - SensitiveData:S3Object/Multiple
+
+- AWS Amplify:
+  - is a set of purpose-built tools and features that enables frontend web and mobile developers to quickly and easily build full-stack applications on AWS.
+  - Amplify provides two services:
+    - Amplify Hosting – provides a git-based workflow for hosting full-stack serverless web apps with continuous deployment. 
+      - provides deep integration with Cypress for End-to-End (E2E) testing, allowing developers to generate a UI report for their tests.
+      - To add Cypress tests to your application, you can update the build settings in the amplify.yml configuration file, which will enable Amplify to run the tests during the build process.
+    - Amplify Studio – a visual development environment that simplifies the creation of scalable, full-stack web and mobile apps. 
+      - Users can use Amplify Studio to build your frontend UI with a set of ready-to-use UI components, create an app backend with AWS resources, and then connect the two together.
