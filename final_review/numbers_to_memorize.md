@@ -84,6 +84,7 @@ SNS
 
 CloudFormation
 • Template size: 51,200 bytes (direct), 460,800 bytes (via S3)
+- a template can have max 500 resources
 
 EC2:
 - Placement groups:
