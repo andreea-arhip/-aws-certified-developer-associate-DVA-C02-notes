@@ -167,3 +167,32 @@ Attach IAM Role to EC2 instance to grant permissions to AWS services (no access 
 | Recover instance if it fails                   | Auto Recovery or ASG      |
 | Must scale app on high CPU usage               | ASG with CloudWatch Alarm |
 
+### Quick notes:
+- Instance classes: general / compute / memory / storage optimized
+  - SG: applied on ENI (firewall), bound to a VPC (and region), can be attached to multiple instances (and vice-versa)
+    - default SG: inbound from same SG allowed, outbound allowed
+    - new SG: inbound blocked, outbound allowed
+  - Instance profile -> to add roles:
+    - `aws iam create-instance-profile`
+    - `aws iam add-role-to-instance-profile`
+    - `aws ec2 associate-iam-instance-profile`
+  - Spot instances:
+    - spot request -> one-time (launch once, done) / persistent (auto-relaunch after interrupt), ❗Cancel → then terminate manually
+    - spot fleet -> manages multiple instance types / AZs, mix spot + On demand => launch template (not config)
+    - strategies: lowestPrice, diversified, capacityOptimized
+  - Elastic IP - static public IP, 💰Charged if: Unattached or multiple per instance.
+  - Placement: cluster (fast, 1AZ) / spread (HA, max 7 per AZ) / partition (isolation, max 7 per AZ)
+  - States: stop (EBS kept), terminated (EBS deleted), hibernate (max 60 days, EBS kept), standby (ASG only)
+  - EC2 Nitro: newer, better networking, higher speed EBS
+  - vCPU = 2 concurrent threads / CPU core -> 4CPU = 8VCPU
+  - Billing:
+    - on-demand instances in running / stopping state -> billed
+    - burstable performance instances (T3, T3a, and T2 families) -> earn credit when not all CPU is consumed
+  - System manager Run Command = remote shell for EC2s — securely and at scale
+  - monitoring:
+    - EC2 detailed monitoring - metrics each 1 minute
+    - Cloudwatch:
+      - Cloudwatch agent for on-prem / custom metrics (ex: RAM):
+        - CloudWatchAgentServerPolicy for agents on EC2 (not on-prem)
+        - on prem: no role -> access keys
+  - instance metadata: public/private IP, instance ID, AMI ID, SG (http://169.254.169.254/latest/meta-data/)

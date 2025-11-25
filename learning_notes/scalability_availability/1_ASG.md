@@ -31,3 +31,26 @@ Automatically adjusts EC2 instance count based on defined policies (e.g., CPU us
 - You can attach Elastic Load Balancers (Classic/ALB/NLB) to ASG. 
 - Health checks: use ELB or EC2 checks. 
 - Cooldown period avoids rapid scale in/out.
+
+### Quick notes
+- Regional, supports multi-AZ, free (only pay for EC2, EBS etc)
+- Scales EC2 instances horizontally (adds/removes instances).
+- IAM Role attached to ASG → applied to all launched EC2s.
+- If ASG is deleted → all instances are terminated.
+- ELB marks unhealthy → ASG replaces automatically.
+- Scaling policies:
+    - Scheduled
+    - Simple: If CPU > 90% → 10 instances
+    - Step: +2 at 70%, -1 at 30%
+    - Target: Keep CPU ~ 40%
+    - Predictive (uses ML + history): auto-forecast
+- Launch configuration -> does not support Spot instances, cannot be updated (only recreated)
+- Launch template (newer) -> versioned, updatable (new version created), both On Demand & Spot
+    - To change the launch template for an Auto Scaling group, you must create a launch template and then update your Auto Scaling group with it.
+- Use User Data to bootstrap configuration (install agents, dependencies, etc.).
+- Cooldown: 5mins, prevents overscaling
+- Instance refresh: StartInstanceRefresh API:
+    - rolling update using new Launch Template version -> no downtime
+    - define minimum healthy %, warm-up time
+- EC2 ASG works with: ALB, NLB, CLB
+- Creating an ASG from an existing instance's launch template -> no AMI generated, needs to be created custom

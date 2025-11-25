@@ -109,3 +109,29 @@ A highly available and scalable DNS web service by AWS.
 ❌ Latency-based ≠ geolocation — latency is performance, geo is location
 
 ❌ Forgetting to attach health checks to failover/multivalue records
+
+### Quick notes
+- GLOBAL
+- Record types:
+  - A record → maps domain → IPv4 ---> EX: Static EC2 public IP → Elastic IP + A record
+  - AAAA record → maps domain → IPv6
+  - CNAME record → alias to another domain name ---> ❌ No root: example.com, but ✅  www.example.com, api.example.com
+  - ALIAS record → AWS-only extension
+    - Can point to CloudFront, ALB, S3 website, API Gateway, Elastic beanstalk, ❌ no EC2
+    - Works at root domain, No extra DNS query cost
+- Zones:
+  - Public hosted zone → use public IPs or ALIAS
+  - Private hosted zone → for internal VPC DNS (uses private IPs)
+- Health checks + failover → Route 53 can trigger DNS failover based on endpoint health.
+  - failure threshold -> nr of consecutive failed checks before Route 53 marks the endpoint as unhealthy.
+  - visible in Route 53 dashboard -> can be integrated with CloudWatch + SNS for notifications
+  - Can be combined with Calculated checks (AND/OR/NOT)
+- | Policy           | Use Case                   | Health Checks |
+      | ---------------- |----------------------------| ------------- |
+  | **Simple**       | One or many IPs (random)   | ❌             |
+  | **Weighted**     | % traffic (A/B tests)      | ✅             |
+  | **Latency**      | Nearest region             | ✅             |
+  | **Failover**     | Primary → Secondary        | ✅             |
+  | **Geolocation**  | Route by country           | ✅             |
+  | **Geoproximity** | Route by distance (+ bias) | ✅             |
+  | **Multi-value**  | Return up to 8 healthy IPs | ✅             |

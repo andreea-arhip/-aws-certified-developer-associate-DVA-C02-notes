@@ -1,0 +1,208 @@
+Storage
+- EC2 Instance store:
+  - temporary data, cache, staging
+  - directly attached to EC2 on launch, ephemeral, 
+  - highest IOPS, can't be resized / snapshotted
+  
+- EBS:
+  - block based (databases, OS volumes, transactional workloads)
+  - mounted to 1 instance (except multi-attach), 1 AZ 
+  - instance termination: root deleted & others kept (DeleteOnTermination CLI (if running) / console (if stopped))
+  - to detach volume: root (stop -> detach, auto-unmounted), others (unmount -> detach, no need to stop)
+  - types:
+    - GP2 / GP3 - max 16k IOPS (at 5.3GB)
+    - IO1 / IO2 (high-ops, critical) - max 50 IOPS/GiB, max 64k/256k, supports EBS multi-attach
+    - ST1 (big data) / SC1 (cheapest) - cannot be used as boot volumes
+  - encryption: optional, region-specific, in-flight & at rest
+  
+- EFS:
+  - file-based NFS - network file system (shared app data, WordPress, home dirs)
+  - elastic, sharable by EC2/ECS/Lambda across AZs, auto-scalable by usage
+  - performance modes (on creation): GENERAL PURPOSE / max IO (big data, parallel)
+  - throughput modes: BURSTING (scalable 50->100 MB.s) / provisioned (fixed, consistent)
+  - tiers: standard, infrequent (IA) -> lifecycle management
+  - security:
+    - security groups, POSIX permissions
+    - access points -> app-specific access to the same EFS file system with different permissions
+    - encryption in transit (TLS) / AT REST (default - KMS with AWS-key/ own-CMK on creation)
+    
+- S3:
+  - object based (static website, data lake, app assets, log storage) < 5TB
+  - Access management:
+    - IAM policies, bucket policies (force encryption, cross account access)
+    - Object / Bucket ACLs - READ / WRITE / FULL_CONTROL to specific users for object / bucket
+    - Pre-signed URL (Query String authentication)
+    - NOTE: no way to grant access across accounts in different partitions (aws standard -> aws-us-gov)
+  - Static website hosting:
+    - S3 bucket name must = domain name (for Route 53) -> public read bucket policy, disable BPA (block public access)
+    - index.html (mandatory), error.html (optional), other assets at the root level of the bucket
+    - set up custom domain with Route 53: A record (Alias): www.mycompany.com → s3-website-eu-west-1.amazonaws.com
+    - HTTPS only via CloudFront -> [Origin = S3] + [SSL / TLS cert from ACM on Cloudfront] + [Viewer policy = Redirect HTTP->HTTPS]
+  - Encryption:
+    - At rest (at object / bucket level):
+      - SSE-S3 (default):  HTTP/HTTPS, "x-amz-server-side-encryption": "AES256",
+      - SSE-KMS: HTTP/HTTPS, must have kms:GenerateDataKey, "x-amz-server-side-encryption": "aws:kms", `x-amz-server-side-encryption-aws-kms-key-id` (optional for own key)
+      - SSE-C: must HTTPS, client loses key -> object lost, "x-amz-server-side-encryption-customer-algorithm", "x-amz-server-side-encryption-customer-key", "x-amz-server-side-encryption-customer-key-MD5"
+    - Client-side
+    - In transit: enforce HTTPS with bucket policy: deny if SecureTransport = false
+  - Replication:
+    - async, can be at bucket / prefix / object (tags, ex: Dep:Finance) levels
+    - SRR / CRR & cross-account - versioning enabled on source & destination! + IAM roles (KMS too if needed)
+    - not replicated: permanent deletes, lifecycles, no chaining!
+  - Performance: 3,500 PUT/COPY/POST/DELETE and 5,500 GET/HEAD requests per second per prefix
+      - Multi-part Upload:
+        - recommended for files > 100MB, must for files > 5GB
+        - if used with encryption with CMK -> requester must have kms:Decrypt & kms:GenerateDataKey* permissions on the CMK
+      - Transfer Acceleration - uses CloudFront
+  - Pagination: --max-items (user pagination), --page-size(for API call, not user pagination), --starting-token(bookmark)
+  - S3 has strong read-after-write consistency:
+    - all object operations (Get, Put, List, change tags, ACL, metadata) are strongly consistent
+    - bucket configs (ex: deleting a bucket) are eventually consistent
+  - S3 Events - versioning ensures events sent for every write (even writes done at the same time)
+  - S3 Access logs - most detailed about requests made to bucket, must store logs in a different bucket
+  - S3 Select (or Glacier select)- retrieve subset using simple SQL expressions
+  - S3 Inventory - to help manage storage, audit
+  - S3 Analytics - analyze storage patterns (when to move from STANDARD -> IA), does not work for ONEZONE_IA & GLACIER
+  - S3 Object Lambda - add code to S3 GET, ex: hide PII data, can be used with Access Points
+  - CloudTrail - bucket API enabled, object API not enabled by default
+  
+- Athena:
+  - tables are external, Athena runs directly on S3
+  - uses partitions (Hive-style: s3://bucket/year=2025/month=11/)
+  - columnar formats: Parquet or ORC recommended (use AWS Glue to convert data to these formats)
+  - compression: Use Snappy or GZIP to reduce data scanned.
+  - MSCK REPAIR TABLE - to sync metadata with new partitions (when Athena queries time our or miss data).
+  - AWS Glue Data Catalog - Stores metadata (schemas, partitions)
+  - Amazon QuickSight - for visualization and dashboards.
+  - Athena Federated Query - Lets Athena query data beyond S3 (RDS, Redshift, DynamoDB, and on-premises sources), uses Data Source Connectors on Lambda
+
+- Elasticache:
+  - in-memory key-value store, managed by AWS, REGIONAL
+  - Lazy-loading (loads data in cache only when requested) / Write-through (writes data to cache & db)
+  - Redis: 
+    - advanced data types (lists, sets etc), PERSISTENT (but not designed as durable data store -> use MemoryDB for Redis)
+    - cluster mode:
+      - cluster mode DISABLED: 
+        - no shards, 1 primary + up to 5 async replicas
+        - scales reads only
+        - automatic failover + multi-AZ supported
+      - cluster mode ENABLED: 
+        - multiple shards with data subsets, each with 1 primary + up to 5 replicas
+        - scales reads & writes
+        - automatic failover per shard + multi-AZ required
+        - Manual promotion of replicas not supported.
+        - Cluster modifications (node type, count, structure) require restoring from backup.
+    - Encryption: in transit + at rest, AUTH supported
+    - Works with VPC, security groups, KMS, CloudWatch.
+    - Multi-AZ for high availability
+    - Enables ranking and sorting operations (e.g., leaderboards using sorted sets).
+    - Use cases: DB cache, session store (make app stateless), pub-sub, leaderboards
+  - Memcached 
+    - simple, NOT persistent, MULTITHREADED:
+    - NO snapshots, no replication, no failover, no transactions, no encryption
+    - easy horizontal scaling (add/remove nodes)
+    - Encryption: in transit only
+    - Controlled by VPC and security groups (no AUTH).
+    - Use cases: simple cache layer, transient caching (web sessions, rendered pages, metadata cache)
+
+- MemoryDB for Redis:
+  - created for use cases where you want Redis durability like a real database
+  - Durable in-memory DB with Redis-compatible API
+  - Keeps all data in-memory for fast access +++ persists it to multi-AZ durable storage.
+  - Focus: High durability + low latency.
+
+-  RDS:
+  - REGIONAL, fully managed SQL db (PostgreSQL, MySQL, MariaDB, SQL Server, AURORA)
+  - runs on EC2 with EBS storage -> you don't have access
+  - default port: 3306 (MySQL) -> use SG to allow inbound TCP 3306
+  - backups:
+    - automated (default):
+      - daily full backup + logs every 5 mins for PITR
+      - stored in same Region, multi-AZ - retention 1-35 days (default 7)
+    - manual snapshots: kept indefinitely, can be copied across regions
+  - auto-scaling - increases storage (if free space < 10% for 5mins and 6h passed since last change)
+  - read replicas:
+    - max 5, refactor app to use replica endpoint (connection string)
+    - ASYNC replication, cross-region, can be promoted to a standalone DB
+  - multi-AZ
+    - SYNC replication for HA (standby in another AZ)
+    - on failover, RDS swaps CNAME to the standby
+  - re-sharding - add a Read Replica, promote it to master, and partition data manually.
+  - security:
+    - “Encrypt storage, snapshots” → KMS (RDS encryption), enabled at creation (can't be disabled)
+    - “Encrypt database automatically at rest” → TDE (Transparent Data Encryption) for SQL Server / Oracle (engine feature, not AWS)
+  - RDS Proxy:
+    - connection pooling, reuses warm DB connections
+    - allows to enforce IAM DB Auth (credentials can be stored in Secrets Manager)
+    - can only be accessed from within the VPC
+  - Monitoring:
+    - CloudWatch: instance-level metrics from hypervisor (CPU, connections, freeable memory). 
+    - RDS Enhanced Monitoring: OS-level metrics via agent (per-process CPU, memory, I/O) - 1-second granularity.Visible in RDS console and CloudWatch Logs.
+    - Logs: Error logs (default), can be enabled: Slow Query Logs, General Logs, Audit Logs
+  - encryption: at rest (KMS), in flight (SSL, rds.force_ssl=true, use AWS root certs when connecting to DB)
+    - Cannot encrypt an existing DB directly → must copy + restore via encrypted snapshot.
+  - 🧠 Think: “Traditional RDS = simple, lower cost, steady workloads.”
+
+- Aurora:
+  - REGIONAL, supports GLOBAL, managed DB (MySQL, PostgreSQL), 5x better than RDS
+  - high availability:
+    - multi-AZ: 6 copies of data across 3 AZs (4 needed for writes, 3 for reads)
+    - auto failover (<30s, read replica promoted, flips CNAME)
+    - Self-healing, multi-AZ, cross-region replication supported.
+    - continuous S3 backups without performance impact
+  - auto-scaling storage (up to 128 TB) based on load (CPU, connections):
+    - Aurora v2 (spiky workloads): you can configure the scaling based on target metric (Ex: Average connections of Aurora Replicas)
+  - read replicas - up to 15 async (fast replication) read replicas
+  - endpoints - writer (read/write), reader (read replicas), custom (subset of replicas)
+  - multi-master - all nodes read/write, instant write failover
+  - global DB - 1 primary + up to 5 read-only regions
+  - backtrack - restore to any point without snapshots.
+  - security:
+    - KMS at-rest, SSL/TLS in-transit. 
+    - IAM Auth (MySQL/PostgreSQL, 15 min token). 
+    - SGs for network; no SSH.
+  - 🧠 Think: “Aurora = RDS++ — faster, scalable, global, fault-tolerant.”
+
+- DynamoDB:
+  - managed NoSQL key-value + document store
+  - Consistency: eventually consistent (default) / strong (ConsistentRead=true)
+    - LSI (strong / eventual because sync), GSI (eventual only because async)
+  - to get WCU used -> ReturnConsumedCapacity = TOTAL | INDEXES (TOTAL + subtotals for indexes) | NONE (default)
+  - Operations:
+    - BatchGet (100 items/16MB) / BatchWrite (25 items/16MB - PUT/DELETE) = can target multiple tables (handle UnprocessedKeys with backoff) -> AWS SDKs handle retries, backoff etc for batch ops.
+    - TransactWriteItems (≤ 25 actions) / TransactGetItems
+  - Built-in backups: on-demand, PITR (not accessible by you)
+  - Export options: Data Pipeline, Glue, EMR Hive → S3.
+  - Optimistic locking: @DynamoDBVersionAttribute (auto-reject stale updates based on version).
+  - TTL - no extra cost, appears as event in DynamoDB streams (retention 24h)
+  - Scan performance:
+    - parallel scans -> use with rate limit to avoid throttling
+    - reduce page size (use LIMIT) -> uses fewer read ops
+    - isolate scan ops -> use a shadow table (write to both)
+  - Params:
+    - --page-size (less items per API call), --max-items (total items to return) -> EX: --page-size 50 --max-items 100 ==> 50 items per call, 2 API calls
+    - --filter-expression (for Query)
+    - --project-expression -> KEYS_ONLY, INCLUDE, ALL
+  - Best practice: DynamoDB Stream → Kinesis Adapter → Kinesis Client Library → Process data like Kinesis
+  - security:
+    - Restrict by partition key (ex: userID): IAM condition dynamodb:LeadingKeys.
+    - “Encrypt before sending to DynamoDB” →  DynamoDB Encryption Client (client-side using KMS)
+    - “Encrypt automatically at rest” →  Server-side encryption (SSE-KMS or SSE-DynamoDB, default)
+    - “Encrypt in transit” →  TLS/HTTPS (default for DynamoDB API)
+  - Cloudwatch metrics:
+    - for provisioned capacity: ProvisionedReadCapacityUnits / ProvisionedWriteCapacityUnits
+    - for actual used capacity: ConsumedReadCapacityUnits / ConsumedWriteCapacityUnits
+    - for throttling: ReadThrottleEvents / WriteThrottleEvents
+  - PartiQL = SQL-compatible query language for DynamoDB (does not support JOIN)
+  - DAX - default 5min TTL, encryption at rest with KMS, max 10 nodes in a cluster
+  - encryption:
+    - at rest using KMS, in flight using TLS
+    - Gateway Endpoints to access DynamoDB from the VPC without traversing the internet
+
+- OpenSearch:
+  - Managed Elasticsearch-compatible service for search & log analytics. 
+  - Use for real-time log analysis, full-text search, dashboards (via OpenSearch Dashboards). 
+  - Common pipeline: CloudWatch / Kinesis Firehose → OpenSearch → Dashboards. 
+  - Scalable, multi-AZ, snapshots to S3, encryption (KMS + TLS). 
+  - AM/Cognito for access control.
+  - no SQL, has own query language

@@ -80,6 +80,33 @@ Used when resources in private subnet need AWS services without internet.
 - Trying to use NAT Gateway for IPv6 → ❌ Use Egress-Only Internet Gateway. 
 - Confusing SGs (stateful) and NACLs (stateless).
 
+### Quick notes
+- REGIONAL, soft limit: 5 VPCs per region
+- Subnets = IP sub-ranges bound to specific AZs.
+  - 5 IPs reserved per subnet (first 4 + last 1).
+  - Default VPC: only public subnets.
+- Internet Gateway (IGW):
+  - needed for public subnets to access internet:
+    - update route table to allow requests to be routed to the IGW
+  - attached to the VPC (not to the subnets)
+- NAT Gateway:
+  - deployed in public subnet, uses IGW behind the scenes
+  - uses an Elastic IP -> static IP address for high availability
+  - one per AZ for HA; private subnets route traffic to it.
+- NACL:
+  - Subnet-level firewall.
+  - One NACL per subnet but a NACL can be attached to multiple subnets
+  - Rules are stateless → both inbound & outbound must be allowed.
+  - Evaluated by rule number (lowest wins).
+  - Default NACL: allows all traffic.
+- Security Groups are stateful, so allowing inbound traffic to the necessary ports enables the connection.
+- Network ACLs are stateless, so you must allow both inbound and outbound traffic
+- VPC endpoints (PrivateLink):
+  - Gateway endpoint -> S3 and DynamoDB (add target in route table)
+  - Interface endpoint (ENI) -> creates private IP per subnet, attach SG -> most AWS services, including S3
+- VPC Flow Logs: info about the IP traffic, published to CloudWatch Logs / S3
+- VPC peering: private connection, non-transitive, SG can be referenced across peered VPCs
+
 ### Exam-style scenarios
 | 🧪 Scenario                                                                                      | ✅ Solution                                                                                                              |
 |--------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|

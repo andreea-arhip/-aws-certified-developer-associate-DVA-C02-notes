@@ -117,17 +117,37 @@ Amazon API Gateway is a fully managed service to:
 | Rate limit clients separately         | API Gateway + REST + Usage Plans + API Keys   |
 | Connect frontend to backend securely  | API Gateway + VPC Link (for private services) |
 
-### 📌 QUICK CONFIG CHECKLIST
-✅ Integration Type selected?
-
-✅ Resource path defined?
-
-✅ CORS enabled? (for browser access)
-
-✅ Authorization method set?
-
-✅ Stage deployed?
-
-✅ CloudWatch logging enabled?
-
+### 📌 Quick notes
+- API Gateway:
+  - HTTPS only (TLS termination)
+  - Swagger / OpenAPI config supported (import or export):
+    - define, validate, import / export API schema (throw 400 error on validation)
+  - integration: MOCK, AWS_PROXY, AWS, HTTP_PROXY (optional - add headers ex API key), HTTP
+    - mapping templates: Content-type must be json/xml, uses VTL (Velocity Template Language)
+  - endpoint types: edge-optimized (default - global via Cloudfront), regional, private
+    - TLS termination: edge-optimized endpoint -> cert must be in us-east-1 / regional -> cert in same region
+  - stage variables:
+    - can be used to point to different Lambda aliases -> alias weights
+    - can be changed without redeploying the API
+    - passed to context of Lambda: ${stageVariables.variableName}
+  - caching - at stage level, TTL 0-1h (default 300sec), expensive (use for PROD), can use encryption
+    - Cache-Control: max-age=0 -> IAM policy OR Require authorization checkbox
+  - usage plans:
+    - Associate API stages and API keys with the usage plan using CreateUsagePlanKey API
+    - Clients use API keys to access the APIs (passed in X-API-Key header)
+  - logging - can be enabled at stage level (overrides API level)
+    - 2 levels: execution (req, res) / access (who, how)
+  - Metrics - at stage level:
+    - CacheHitCount & CacheMissCount, 4XX / 5XX error counts
+    - Count, Latency (client-API-backend), IntegrationLatency (API-backend)
+  - 429 error -> throttling, set stage /methods limits, usage plans
+  - CORS:
+    - Browser sends a pre-flight OPTIONS request ==> Response must include → Access-Control-Allow-Origin, Access-Control-Allow-Methods, etc.
+      - MaxAgeSeconds → how long the browser caches the pre-flight result.
+    - 🧩 Proxy Integration: backend must return CORS headers.
+    - 🧩 Non-Proxy Integration: API Gateway can inject headers automatically.
+  - Lambda authorizer: token-based (JWT or OAUTH), request param-based (identity from headers, body, stageVariables, $context)
+  - REST → full-featured, resource policies, API keys, ❌ no OIDC/OAuth2, 💰 expensive
+  - HTTP → lightweight proxy (Lambda/HTTP), ✅ OIDC/OAuth2, ❌ API keys, 💸 cheap
+  - WebSocket → 2-way persistent connection, real-time apps (chat, games)
 
